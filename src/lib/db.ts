@@ -10,7 +10,7 @@ export function adminDb() {
   if (!url || !key) throw new Error('Supabase is not configured.');
   return createClient(url,key,{ auth: { persistSession: false, autoRefreshToken: false } });
 }
-export type TripRow = { id: string; owner_id: string; workspace_id: WorkspaceId | 'legacy'; bot_id: string | null; browser_bot_id: string | null; title: string; state: TripState; version: number; is_replay: boolean; updated_at: string };
+export type TripRow = { id: string; owner_id: string; workspace_id: WorkspaceId | 'legacy'; bot_id: string | null; browser_bot_id: string | null; title: string; state: TripState; version: number; is_replay: boolean; archived?: boolean; updated_at: string };
 export type CommandRow = { id: string; trip_id: string; owner_id: string; revision: number; kind: string; payload: Record<string, unknown>; status: string; created_at: string; delivery?: string };
 export async function getTrip(id: string, ownerId?: string): Promise<TripRow> {
   let q = adminDb().from('roamer_trips').select('*').eq('id',id);
@@ -19,6 +19,14 @@ export async function getTrip(id: string, ownerId?: string): Promise<TripRow> {
   if (error?.code === 'PGRST116' || (!error && !data)) throw new HttpError(404, 'Trip not found.');
   if (error) throw error;
   return { ...data, state: withSuitability(data.state) };
+}
+// Web links may survive a deliberate workspace reset. Worker lookups stay exact.
+export async function getWebTrip(id: string, ownerId: string): Promise<TripRow> {
+  const { data, error } = await adminDb().from('roamer_trip_links').select('target_trip_id').eq('source_trip_id', id).eq('owner_id', ownerId).maybeSingle();
+  if (error) throw error;
+  const trip = await getTrip(data?.target_trip_id ?? id, ownerId);
+  if (trip.archived) throw new HttpError(404, 'This trip has been archived. Open your current trip from the history menu.');
+  return trip;
 }
 export async function getWorkspace(id: WorkspaceId | 'legacy', ownerId: string): Promise<WorkspaceRow> {
   const { data, error } = await adminDb().from('roamer_workspaces').select('id,owner_id,bot_id,bot_name,browser_bot_id,profile').eq('id', id).eq('owner_id', ownerId).maybeSingle();

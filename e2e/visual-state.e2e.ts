@@ -34,9 +34,9 @@ function populatedState(): TripState {
   return state;
 }
 
-async function mockWorkspace(page: Page, state: TripState = populatedState()) {
-  const id = randomUUID();
-  let trip = { id, owner_id: 'browser-fixture', workspace_id: 'stress-slower', bot_id: randomUUID(), browser_bot_id: randomUUID(), title: 'Isolated UI fixture', state, version: 1, is_replay: false, updated_at: new Date().toISOString() };
+async function mockWorkspace(page: Page, state: TripState = populatedState(), options: { workspace?: string; debug?: boolean; id?: string } = {}) {
+  const id = options.id ?? randomUUID();
+  let trip = { id, owner_id: 'browser-fixture', workspace_id: options.workspace ?? 'stress-slower', bot_id: randomUUID(), browser_bot_id: randomUUID(), title: 'Isolated UI fixture', state, version: 1, is_replay: false, updated_at: new Date().toISOString() };
   const commands: Record<string, any>[] = [];
   let delay = 500;
   let commandHook: ((body: Record<string, any>) => void) | undefined;
@@ -60,7 +60,7 @@ async function mockWorkspace(page: Page, state: TripState = populatedState()) {
     if (path === `/api/trips/${id}`) { await route.fulfill({ json: { trip, worker: { status: 'online', heartbeat: new Date().toISOString() } } }); return; }
     await route.fulfill({ status: 404, json: { error: 'Not part of this fixture.' } });
   });
-  await page.goto(`/?trip=${id}`); await expect(page.locator('.app-shell')).toHaveAttribute('data-trip-id', id);
+  await page.goto(`/?trip=${id}${options.debug ? '&debug=1' : ''}`); await expect(page.locator('.app-shell')).toHaveAttribute('data-trip-id', id);
   return {
     id, commands,
     setDelay(ms: number) { delay = ms; },
@@ -69,6 +69,36 @@ async function mockWorkspace(page: Page, state: TripState = populatedState()) {
     async update(next: TripState) { trip = { ...trip, state: structuredClone(next), version: trip.version + 1, updated_at: new Date().toISOString() }; await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange'))); }
   };
 }
+
+test('personal debug controls stay hidden and tester debug remains available', async ({ page }) => {
+  await mockWorkspace(page, initialState(), { workspace: 'personal', debug: true });
+  await expect(page.getByRole('complementary', { name: 'Trip debugging' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Debug view', exact: true })).toHaveCount(0);
+  await mockWorkspace(page, initialState(), { id: '917b1e2b-2581-42db-8180-b08de53f9dad', debug: true });
+  await expect(page.getByRole('complementary', { name: 'Trip debugging' })).toHaveCount(0);
+  await mockWorkspace(page, initialState(), { debug: true });
+  await expect(page.getByRole('complementary', { name: 'Trip debugging' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Debug view', exact: true })).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.locator('.debug-bot')).toHaveText('Roamer Test Slower');
+});
+
+for (const width of [390, 1440]) test(`draft idea chips and generated illustration work at ${width}px without sending`, async ({ page }) => {
+  await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
+  const fixture = await mockWorkspace(page, initialState(), { workspace: 'personal', debug: true });
+  const illustration = page.locator('.travel-illustration');
+  await expect(illustration).toBeVisible();
+  expect(await illustration.evaluate(async image => { await (image as HTMLImageElement).decode(); return (image as HTMLImageElement).naturalWidth; })).toBe(600);
+  const ideas = page.getByLabel('Trip ideas');
+  for (const label of ['By the coast', 'Walking trails', 'Local food', 'City break']) {
+    const button = ideas.getByRole('button', { name: label, exact: true });
+    expect((await button.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    await button.click(); await expect(page.getByLabel('Message Roamer')).toBeFocused();
+    await expect(page.getByLabel('Message Roamer')).not.toHaveValue('');
+  }
+  expect(fixture.commands).toHaveLength(0);
+  await expect(page.locator('.message-list')).toHaveCount(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
 
 for (const width of [390, 768, 1280, 1440]) test(`evidence cards and questions stay usable at ${width}px`, async ({ page }) => {
   await page.setViewportSize({ width, height: width < 1000 ? 844 : 1000 });

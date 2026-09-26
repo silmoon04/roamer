@@ -7,7 +7,7 @@ const mock = vi.hoisted(() => ({ trip: undefined as TripRow | undefined, batches
 vi.mock('../src/lib/auth', () => ({ authenticatedUser: async () => ({ id: 'owner' }), apiError: (e: Error & { status?: number }) => Response.json({ error: e.message }, { status: e.status ?? 400 }) }));
 vi.mock('../src/lib/db', async () => {
   const actual = await vi.importActual<typeof import('../src/lib/db')>('../src/lib/db');
-  return { ...actual, getTrip: async () => mock.trip, adminDb: () => {
+  return { ...actual, getTrip: async () => mock.trip, getWebTrip: async () => mock.trip, adminDb: () => {
     const query = { select: () => query, eq: () => query, maybeSingle: async () => ({ data: mock.prior }) }; return { from: () => query };
   }, commitEvents: async (_id: string, make: (t: TripRow) => DomainEvent[], makeCommand: (t: TripRow) => QueuedCommand | null, requestId: string) => {
     const events = make(mock.trip!); mock.batches.push(events); const command = makeCommand(mock.trip!); if (command) mock.commands.push(command); mock.requestIds.push(requestId);
@@ -49,3 +49,9 @@ it('queues a deliberate requirement correction with the updated revision and exa
   expect(mock.trip!.state.requirements?.map(requirement => requirement.text)).toEqual(['Step-free entrance and a confirmed ground-floor room.']); expect(mock.commands[0].payload.text).toContain('Step-free entrance and a confirmed ground-floor room.');
 });
 it('rejects a requirement edit if the source is no longer active', async () => { expect((await send({ id: randomUUID(), kind: 'requirement', requirementId: 'missing', text: null })).status).toBe(404); expect(mock.commands).toEqual([]); });
+it('rejects a stale tab writing through the fixed old link into the fresh trip', async () => {
+  const oldLink = randomUUID();
+  const response = await POST(new Request('http://local', { method: 'POST', body: JSON.stringify({ id: randomUUID(), kind: 'message', text: 'A fresh idea.' }) }), { params: Promise.resolve({ id: oldLink }) });
+  expect(response.status).toBe(409); expect(mock.batches).toEqual([]); expect(mock.commands).toEqual([]);
+});
+it('rejects a mutation if the trip became archived after the initial read', async () => { mock.trip!.archived = true; expect((await send({ id: randomUUID(), kind: 'message', text: 'Stale tab' })).status).toBe(409); expect(mock.commands).toEqual([]); });

@@ -24,7 +24,7 @@ These screenshots use synthetic test fixtures to demonstrate the interface. The 
 
 ## Submission status
 
-The latest deterministic test run passed **227 tests**, with nine opt-in live tests skipped, and TypeScript checks passed. Tests cover intake, event ordering, stale results, question answers, workspace isolation, provider normalization, model reply parsing and recovery states. Read the [recovery verification](docs/RECOVERY-VERIFICATION.md) for the live intake failure and its repair. Live provider calls remain slower than the demo target. A checked fare or room price does not confirm that accessibility, bed layout or every traveller preference is suitable.
+The latest deterministic test run passed **241 tests**, with nine opt-in live tests skipped, and TypeScript checks passed. Tests cover intake, event ordering, stale results, question answers, workspace isolation, provider normalization, model reply parsing, personal reset links and recovery states. Read the [recovery verification](docs/RECOVERY-VERIFICATION.md) for the live intake failure and its repair. Live provider calls remain slower than the demo target. A checked fare or room price does not confirm that accessibility, bed layout or every traveller preference is suitable.
 
 Native Grok voice synchronisation is **unverified**. Voice remains in the Grok app; no OpenAI API key is required. A consistently completed shortlist within three minutes and a verified replay backup are still unfinished. Debug view exposes inputs, outputs, queue time, task runtime and update timing to make those issues inspectable.
 
@@ -32,11 +32,13 @@ Native Grok voice synchronisation is **unverified**. Voice remains in the Grok a
 
 The hosted app is [roamer-chi.vercel.app](https://roamer-chi.vercel.app). Open the local private launcher at `.roamer/Open Roamer.html` for the personal handoff. Keep that file private: it contains access details and is excluded from version control. The launcher contents are not part of the public documentation.
 
+The personal entry now opens a fresh conversation with no confirmed budget, dates, destination or saved preferences. Earlier personal trips are archived. The existing submitted link resolves to the fresh trip through an owner-scoped alias; new messages and subsequent reloads use the current trip. A reset preserves the old records for recovery and never forwards their pending commands to the new bots.
+
 Your conversation uses **Roamer Personal**. Direct browser checks use the separate **Roamer Personal Research** bot, so a long browser task does not occupy your conversation bot. The laptop worker and signed-in Grok desktop app are still required even when the website is hosted on Vercel.
 
 Automated tests use dedicated tester workspaces and bots. Read [personal testing notes](docs/PERSONAL-TESTING.md) for the earlier handoff evidence and limitations. Native spoken voice synchronisation has not been verified.
 
-Open **Debug view** to inspect **Timing & tasks**, **Inputs & outputs**, or **Your feedback**. **Save testing note** records your comment with the trip without sending it to Grok. **Export JSON** includes sanitized debug records and browser timing samples. The panel refreshes every five seconds while open; a dash means no timing sample exists yet. Queue wait, running time, database update delay and bridge delay are separate measurements.
+The personal workspace hides the debug panel. Designated tester workspaces retain **Debug view**, with **Timing & tasks**, **Inputs & outputs** and **Your feedback**. **Save testing note** records a comment with the tester trip without sending it to Grok. **Export JSON** includes sanitized debug records and browser timing samples. The panel refreshes every five seconds while open; a dash means no timing sample exists yet. Queue wait, running time, database update delay and bridge delay are separate measurements.
 
 ## Run locally
 
@@ -78,6 +80,8 @@ The first version stops at a shortlist and source/booking links. It does not res
 | `stress-friends` | Dedicated friends tester bot | Its registered research bot |
 
 The server-owned `roamer_workspaces` registry supplies each new trip's bot IDs and saved preferences. Trip bindings are fixed at creation. Replies to website commands must match the appropriate bot, trip and requested task. Each bot has its own execution lane and heartbeat; research providers still share bounded capacity.
+
+Conversation sends and active reply checks take priority over background transcript polling. Unused tester bots stay idle, while recently active bots are checked less frequently after their work finishes. These changes reduce competing bridge requests; the recorded video timings predate this polling update.
 
 History defaults to `personal`. Tester histories require their explicit workspace selection, and tester preferences do not become personal preferences. Earlier shared Travel Agent trips remain readable but reject new commands. This is operational separation within one private demo account, not separate accounts for multiple users.
 

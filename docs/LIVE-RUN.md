@@ -2,6 +2,8 @@
 
 This run used the deployed Roamer interface, a dedicated tester conversation bot, its research bot, and real search services. It did not use the personal conversation workspace. The edited video shortens waiting; the measurements below come from the unedited run.
 
+This recording predates the later interface polish and transcript-polling changes. Its timings describe that captured run, not a fresh benchmark of the current worker.
+
 The scenario covered two people travelling from London for five nights, a £1,000 total budget, hiking, good food and cosy accommodation. While searches continued, the tester added that neither person drives, requested another stay, and changed the departure date from 12 to 13 October 2026 while asking for a private bathroom.
 
 ## Measured progress

@@ -9,7 +9,7 @@ const mock = vi.hoisted(() => ({ trip: undefined as TripRow | undefined, getTrip
 vi.mock('../src/lib/auth', () => ({ authenticatedUser: async () => ({ id: mock.user }), apiError: (error: { status?: number; message: string }) => Response.json({ error: error.message }, { status: error.status ?? 400 }) }));
 vi.mock('../src/lib/db', async () => {
   const actual = await vi.importActual<typeof import('../src/lib/db')>('../src/lib/db');
-  return { ...actual, getTrip: mock.getTrip, createTrip: mock.createTrip, commitEvents: mock.commitEvents, getWorkspace: async () => ({ bot_name: 'Personal Grok' }), getWorkerHealth: async () => ({ id: 'laptop:personal-bot', status: 'online', heartbeat: 'now', detail: 'Ready' }), adminDb: () => ({ from: (table: string) => {
+  return { ...actual, getTrip: mock.getTrip, getWebTrip: mock.getTrip, createTrip: mock.createTrip, commitEvents: mock.commitEvents, getWorkspace: async () => ({ bot_name: 'Personal Grok' }), getWorkerHealth: async () => ({ id: 'laptop:personal-bot', status: 'online', heartbeat: 'now', detail: 'Ready' }), adminDb: () => ({ from: (table: string) => {
     const query = { select: (value: string) => { mock.filters.push([table, 'select', value]); return query; }, eq: (key: string, value: unknown) => { mock.filters.push([table, key, value]); return query; }, order: () => query, limit: async (n: number) => { mock.filters.push([table, 'limit', n]); return { data: table === 'roamer_events' ? mock.events : table === 'roamer_commands' ? mock.commands : [], error: null }; } }; return query;
   } }) };
 });
@@ -39,3 +39,8 @@ it('keeps earlier shared-bot conversations read-only', async () => { mock.trip!.
 it('stores bounded timings with feedback on the same owned trip', async () => { const metric = { type: 'interaction', tripId: mock.trip!.id, ms: 23, version: 0 }; expect((await note(request({ note: 'The click felt quick.', observedVersion: 0, browserMetrics: [metric] }), ctx())).status).toBe(200); const events: DomainEvent[] = mock.commitEvents.mock.calls[0][1](mock.trip); expect(events[0].payload).toMatchObject({ observedVersion: 0, browserMetrics: [metric] }); });
 it('rejects feedback timings from a different trip', async () => { expect((await note(request({ note: 'Wrong trip.', browserMetrics: [{ type: 'interaction', tripId: randomUUID(), ms: 10 }] }), ctx())).status).toBe(400); expect(mock.commitEvents).not.toHaveBeenCalled(); });
 it('rejects feedback arrays larger than the bounded sample limit', async () => { const metric = { type: 'interaction', tripId: mock.trip!.id, ms: 10 }; expect((await note(request({ note: 'Too many.', browserMetrics: Array(31).fill(metric) }), ctx())).status).toBe(400); expect(mock.commitEvents).not.toHaveBeenCalled(); });
+it('reads debug evidence from the canonical trip behind a fixed link', async () => {
+  const oldLink = randomUUID(); const result = await (await debug(request(), { params: Promise.resolve({ id: oldLink }) })).json();
+  expect(result.trip.id).toBe(mock.trip!.id); expect(mock.filters).toContainEqual(['roamer_events','trip_id',mock.trip!.id]); expect(mock.filters).not.toContainEqual(['roamer_events','trip_id',oldLink]);
+});
+it('rejects feedback from an old tab after a reset instead of carrying it into the fresh trip', async () => { expect((await note(request({ note: 'Old trip feedback.' }), { params: Promise.resolve({ id: randomUUID() }) })).status).toBe(409); expect(mock.commitEvents).not.toHaveBeenCalled(); });

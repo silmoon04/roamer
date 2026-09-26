@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { authenticatedUser, apiError } from '@/lib/auth';
-import { adminDb, commitEvents, event, getTrip, type QueuedCommand } from '@/lib/db';
+import { adminDb, commitEvents, event, getWebTrip, type QueuedCommand } from '@/lib/db';
 import { applyEvent, criteriaPatchSchema, type Action } from '@/lib/domain';
 import { HttpError } from '@/lib/errors';
 
@@ -19,9 +19,11 @@ const commandSchema = z.discriminatedUnion('kind', [
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const user = await authenticatedUser(request);
-    const { id } = await params;
-    z.uuid().parse(id);
-    const authorized = await getTrip(id, user.id);
+    const { id: requestedId } = await params;
+    z.uuid().parse(requestedId);
+    const authorized = await getWebTrip(requestedId, user.id);
+    if (requestedId !== authorized.id) throw new HttpError(409, 'This trip was reset. Refresh to open your fresh trip before sending a message.');
+    const id = authorized.id;
     if (authorized.workspace_id === 'legacy') throw new HttpError(409, 'Start a fresh trip to use your private Grok bot. This earlier conversation is read-only.');
     if (authorized.is_replay) throw new HttpError(409, 'This is a saved run. Start a new trip to make changes.');
     const command = commandSchema.parse(await request.json());
@@ -34,6 +36,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     let queued: QueuedCommand | null = null;
     const trip = await commitEvents(id, t => {
       if (t.owner_id !== user.id) throw new HttpError(404, 'Trip not found.');
+      if (t.archived) throw new HttpError(409, 'This trip has been archived. Refresh to open your current trip.');
       if (t.workspace_id === 'legacy') throw new HttpError(409, 'Start a fresh trip to use your private Grok bot. This earlier conversation is read-only.');
       if (t.is_replay) throw new HttpError(409, 'This is a saved run. Start a new trip to make changes.');
       let text = '';

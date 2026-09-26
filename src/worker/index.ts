@@ -11,6 +11,7 @@ import { requirementRequest, transportDiscoveryQuery, transportRequest } from '.
 import { priceUpdate } from './progress';
 import { requestScopedStop } from './deadline';
 import { excludedStayNames } from './stay-constraints';
+import { pollingPolicy } from './polling';
 
 const db = adminDb();
 const ownerId = process.env.ROAMER_USER_ID;
@@ -45,7 +46,7 @@ async function refreshRegistry() {
     const id = bot.id === legacyCoordinatorId ? workerId : `${workerId}:${bot.id}`;
     const { data: saved, error: cursorError } = await db.from('roamer_workers').select('cursor').eq('id', id).eq('owner_id', ownerId).maybeSingle();
     if (cursorError) throw cursorError;
-    const lane: BotLane = { bot, cursor: saved?.cursor ?? undefined, polling: false, lastSuccessfulPoll: Date.now(), failures: 0, recentAt: Date.now() };
+    const lane: BotLane = { bot, cursor: saved?.cursor ?? undefined, polling: false, lastSuccessfulPoll: Date.now(), failures: 0, recentAt: 0 };
     lanes.push(lane); startLanePolling?.(lane);
   }
 }
@@ -172,7 +173,7 @@ async function ingest(lane: BotLane, entry: TranscriptEntry) {
 async function poll(lane: BotLane) {
   if (lane.polling || stopping) return; lane.polling = true;
   try {
-    const entries = await transcript(lane.cursor, lane.bot);
+    const entries = await transcript(lane.cursor, lane.bot, pollingPolicy(Boolean(lane.bot.alwaysPoll), Boolean(lane.waiter), lane.recentAt, Date.now()).priority);
     lane.failures = 0; lane.lastSuccessfulPoll = Date.now();
     for (const entry of entries) {
       try { await ingest(lane, entry); }
@@ -189,11 +190,12 @@ async function poll(lane: BotLane) {
 }
 function bundlesFromEntrySafelyContains(entry: TranscriptEntry, id: string) { return (entry.message?.content ?? entry.content ?? '').includes(id) && entry.kind !== 'message'; }
 async function heartbeat() {
-  const relevant = lanes.filter(lane => lane.bot.alwaysPoll || lane.waiter);
+  const registeredLanes = lanes.filter(lane => bots.some(bot => bot.id === lane.bot.id));
+  const relevant = registeredLanes.filter(lane => lane.bot.alwaysPoll || lane.waiter);
   const degraded = queueDisconnected || relevant.some(lane => lane.failures >= 3 || Date.now() - lane.lastSuccessfulPoll > 30000);
   const { error } = await db.from('roamer_workers').upsert([
     { id: workerId, owner_id: ownerId, heartbeat: now(), status: stopping ? 'offline' : degraded ? 'degraded' : 'online', detail: queueDisconnected ? 'Reconnecting to the trip service' : degraded ? 'Reconnecting to Grok' : active.size ? `${active.size} active tasks` : 'Ready', ...(lanes.find(lane => lane.bot.id === legacyCoordinatorId)?.cursor ? { cursor: lanes.find(lane => lane.bot.id === legacyCoordinatorId)!.cursor } : {}) },
-    ...lanes.filter(lane => lane.bot.id !== legacyCoordinatorId).map(lane => {
+    ...registeredLanes.filter(lane => lane.bot.id !== legacyCoordinatorId).map(lane => {
       const reconnecting = queueDisconnected || lane.failures >= 3 || ((lane.bot.alwaysPoll || Boolean(lane.waiter)) && Date.now() - lane.lastSuccessfulPoll > 30000);
       return { id: `${workerId}:${lane.bot.id}`, owner_id: ownerId, heartbeat: now(), status: stopping ? 'offline' : reconnecting ? 'degraded' : 'online', detail: queueDisconnected ? 'Reconnecting to the trip service' : reconnecting ? 'Reconnecting to Grok' : lane.waiter ? 'Processing your request' : 'Ready', cursor: lane.cursor };
     })
@@ -271,6 +273,7 @@ async function runConversation(command: CommandRow) {
   const prompt = `${isBrowser ? browserProtocol(String(command.payload.purpose)) : protocol}\n${JSON.stringify(request)}`;
   const response = new Promise<'done' | 'superseded'>((resolve, reject) => { lane.waiter = { command, resolve, reject }; });
   void response.catch(() => undefined);
+  startLanePolling?.(lane);
   // Mark before sending: a worker crash can never automatically repeat an ambiguous message.
   const { error: deliveryError } = await db.from('roamer_commands').update({ delivery: 'unknown' }).eq('id', command.id);
   if (deliveryError) throw deliveryError;
@@ -459,9 +462,11 @@ async function main() {
   const lock = await open(lockPath, 'wx'); await lock.writeFile(String(process.pid)); await lock.close();
   let maintenanceTimer: ReturnType<typeof setInterval> | undefined;
   const pollAgain = async (lane: BotLane) => {
+    if (!bots.some(bot => bot.id === lane.bot.id)) return;
     const startedAt = Date.now();
-    if (bots.some(bot => bot.id === lane.bot.id) && (lane.bot.alwaysPoll || lane.waiter || Date.now() - lane.recentAt < 600000)) await poll(lane);
-    if (!stopping) lane.timer = setTimeout(() => void pollAgain(lane), Math.max(0, 2000 - (Date.now() - startedAt)));
+    const policy = pollingPolicy(Boolean(lane.bot.alwaysPoll), Boolean(lane.waiter), lane.recentAt, startedAt);
+    if (bots.some(bot => bot.id === lane.bot.id) && policy.enabled) await poll(lane);
+    if (!stopping) lane.timer = setTimeout(() => void pollAgain(lane), Math.max(0, policy.intervalMs - (Date.now() - startedAt)));
   };
   const stop = () => { stopping = true; for (const lane of lanes) lane.waiter?.reject(new Error('The worker is stopping.')); for (const job of active.values()) job.abort.abort(new Error('The worker is stopping.')); };
   process.on('SIGINT', stop); process.on('SIGTERM', stop);
@@ -479,7 +484,7 @@ async function main() {
     if (stopping) return;
     console.log(`Roamer worker online: ${bots.length} registered bots have independent task lanes. Grok credentials stay on this laptop.`);
     maintenanceTimer = setInterval(() => void maintenance().catch(error => console.warn(`[worker] ${safeError(error)}`)), 15000);
-    startLanePolling = lane => { void pollAgain(lane); };
+    startLanePolling = lane => { clearTimeout(lane.timer); if (!lane.polling) void pollAgain(lane); };
     for (const lane of lanes) startLanePolling(lane);
     let claimFailures = 0;
     while (!stopping) {

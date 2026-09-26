@@ -1,5 +1,7 @@
 # Personal testing handoff
 
+These notes record the earlier handoff and its measurements. The current personal interface hides the debug panel; diagnostics remain available in designated tester workspaces. Later fixes and live evidence are documented in [recovery verification](RECOVERY-VERIFICATION.md) and the [recorded live run](LIVE-RUN.md).
+
 Open `.roamer/Open Roamer.html` on this laptop to enter the [hosted app](https://roamer-chi.vercel.app). The launcher contains private access details; do not publish or attach it to reports. Your chat uses **Roamer Personal**, and browser research uses **Roamer Personal Research**. Tester trips have separate bots and preferences. Automated tester submissions are paused while you try your workspace.
 
 Keep Grok signed in and the laptop worker running. Text and clicked answers are supported by the website. Native voice stays in Grok; a real spoken interaction on Roamer Personal still needs to prove that it updates the website. Spoken synchronisation remains unverified.
