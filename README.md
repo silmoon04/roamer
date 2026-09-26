@@ -1,0 +1,89 @@
+# Roamer
+
+A private travel workspace with Grok Bot conversation, structured questions, live research activity and dated flight/accommodation comparisons.
+
+## Open your personal workspace
+
+The hosted app is [roamer-chi.vercel.app](https://roamer-chi.vercel.app). Open the local private launcher at `.roamer/Open Roamer.html` for the personal handoff. Keep that file private: it contains access details and is excluded from version control. The launcher contents are not part of the public documentation.
+
+Your conversation uses **Roamer Personal**. Direct browser checks use the separate **Roamer Personal Research** bot, so a long browser task does not occupy your conversation bot. The laptop worker and signed-in Grok desktop app are still required even when the website is hosted on Vercel.
+
+Automated tester submissions are paused for this handoff. The worker remains available for messages you choose to send. Read [personal testing notes](docs/PERSONAL-TESTING.md) for the known limitations and the evidence behind them. Native spoken voice synchronisation has not been verified.
+
+Open **Debug view** to inspect **Timing & tasks**, **Inputs & outputs**, or **Your feedback**. **Save testing note** records your comment with the trip without sending it to Grok. **Export JSON** includes sanitized debug records and browser timing samples. The panel refreshes every five seconds while open; a dash means no timing sample exists yet. Queue wait, running time, database update delay and bridge delay are separate measurements.
+
+## Run locally
+
+Node 24 is used for the web app and local worker.
+
+```powershell
+npm ci
+npm run dev
+```
+
+In a second terminal, while the Grok desktop app is signed in:
+
+```powershell
+npm run worker
+```
+
+Open http://127.0.0.1:3000. The private access code is `ROAMER_ACCESS_CODE` in the ignored `.env.local`. The web app signs into its dedicated Supabase demo user; all trip rows have owner-scoped read policies. Only server routes and the laptop worker may write.
+
+The laptop worker must remain running for Grok messages and live searches. Reloading the website restores the saved trip. An offline laptop is shown in the composer and queued messages remain saved.
+
+## How it works
+
+- Next.js serves the workspace and authenticated command routes.
+- Supabase stores trip snapshots, events, commands, traveller preferences and worker heartbeats. Realtime delivers changed trip state; polling repairs missed updates.
+- The laptop worker uses the pinned community `grok-bot-cli` bridge with the existing Grok desktop session. The desktop credentials never go to Vercel or the browser.
+- Roamer Personal chooses questions and destinations. Validated `<roamer>` JSON blocks become UI events. Website text is rendered as plain text, not HTML.
+- Tavily supplies source discovery. Apify supplies dated flights and stays. Grok’s browser is used for checks that need direct browsing, such as access to a stay and a walk without a car.
+- Native voice stays in the Grok app. Use Roamer Personal with this website beside it. A spoken test is required to verify that voice updates reach this conversation; text and clicked-answer tests do not establish voice support. No OpenAI key is used.
+
+The first version stops at a shortlist and source/booking links. It does not reserve, purchase or enter payment information. The displayed total covers flights and the whole stay for the specified party; food, local transport and optional extras remain outside it.
+
+## Bot and preference isolation
+
+| Workspace | Conversation bot | Browser checks |
+| --- | --- | --- |
+| `personal` | Roamer Personal | Roamer Personal Research |
+| `stress-careful` | Dedicated careful-couple tester bot | Its own tester bot |
+| `stress-slower` | Dedicated slower-travel tester bot | Its own tester bot |
+| `stress-friends` | Dedicated friends tester bot | Its own tester bot |
+
+The server-owned `roamer_workspaces` registry supplies each new trip's bot IDs and saved preferences. Trip bindings are fixed at creation. Replies to website commands must match the appropriate bot, trip and requested task. Each bot has its own execution lane and heartbeat; research providers still share bounded capacity.
+
+History defaults to `personal`. Tester histories require their explicit workspace selection, and tester preferences do not become personal preferences. Earlier shared Travel Agent trips remain readable but reject new commands. This is operational separation within one private demo account, not separate accounts for multiple users.
+
+## Configuration
+
+`.env` contains the existing Tavily key. `.env.local` contains the Supabase project configuration, private demo login and primary Apify token. See `.env.example` for names. Never commit either file.
+
+Vercel receives the two browser-safe Supabase values, the server service key and dedicated demo account configuration. Tavily, Apify and Grok session credentials remain on the laptop.
+
+The schema is recorded in `supabase/migrations`. This project uses the cloud database, so Docker is not required. `scripts/setup-local.mjs` provisions the private demo account for a new configured project and imports the explicitly authorised primary Apify key from the sibling misc folder. It does not print credentials.
+
+## Checks
+
+```powershell
+npm run typecheck
+npm test
+npm run test:e2e
+npm run build
+```
+
+The browser suite uses Chrome, a running local server and isolated Supabase trip records. Keep the queue worker stopped during this suite so fixture messages are not sent to Grok. The suite removes only the test trips it created. Real-service scenario runs are separate and are recorded in the test report.
+
+At the personal handoff, the full unit run recorded **135 passes**; nine opt-in live queue tests were skipped. Seven live API/database isolation checks passed, and a separate rolled-back transaction confirmed preference isolation. The personal workspace and debug panels were inspected at **390 and 1440 pixels**, with no horizontal overflow or browser JavaScript errors. Saving feedback was checked on a disposable tester trip; the personal trip was left unchanged. These checks do not establish a completed live shortlist or spoken voice support on the new bots.
+
+Opt-in database queue tests now use `stress-careful` and refuse to run while a fresh worker heartbeat is present. Do not restart stress scripts during the personal handoff. Earlier scenario scripts and browser fixtures can enqueue real work; review their workspace selection before running them again.
+
+Browser screenshots, traces and measured timings are written under the ignored `output/playwright` directory. Raw provider receipts are private local files under `.roamer`; application results contain only the fields needed for comparison and source checking.
+
+Personal handoff screenshots and browser inspection reports are in `output/personal/`. The live isolation receipt is `output/tests/workspace-isolation.json`. Baseline stress reports are in `output/stress/`; they describe the earlier shared-bot implementation and must not be cited as measured performance of the new isolated bots.
+
+## Service limits
+
+Flight actor: `kaix/google-flights-scraper`. Stay actor: `voyager/booking-scraper`. Requests are limited to a small result set, two concurrent actors, 150 seconds per actor and a $0.25 per-run charge cap. Provider failures remain visible and may be retried. Uncertain Grok message delivery is not automatically resent.
+
+The bridge is a community integration tied to the installed desktop app. Its version is pinned. Re-run the real conversation checks after upgrading either side.

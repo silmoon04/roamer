@@ -1,0 +1,21 @@
+import { writeFile, mkdir } from 'node:fs/promises';
+import { adminDb, getTrip } from '../src/lib/db';
+import { recordedReplay } from '../src/lib/replay';
+
+const sourceId = process.argv[2];
+if (!sourceId || !/^[0-9a-f-]{36}$/i.test(sourceId)) throw new Error('Pass the completed live tester trip ID.');
+const owner = process.env.ROAMER_USER_ID!;
+const db = adminDb();
+const source = await getTrip(sourceId, owner);
+if (!source.workspace_id.startsWith('stress-') || source.is_replay) throw new Error('Record a completed isolated tester run, not the personal trip.');
+const jobs = await db.from('roamer_commands').select('id', { count: 'exact', head: true }).eq('trip_id', sourceId).in('status', ['queued','running']);
+if (jobs.error || jobs.count) throw new Error('This live run still has outstanding work.');
+const state = recordedReplay(source.state, new Date().toISOString());
+const complete = state.candidates.length > 0 && state.candidates.every(candidate => candidate.status === 'checked');
+const title = complete ? 'Recorded demo · checked shortlist' : 'Recorded demo · partial results';
+const saved = await db.from('roamer_trips').insert({ owner_id: owner, workspace_id: 'personal', title, state, is_replay: true }).select('id').single();
+if (saved.error) throw new Error('Could not save the recorded demo.');
+const receipt = { sourceTripId: sourceId, replayTripId: saved.data.id, recordedAt: state.replayRecordedAt, complete, title };
+await mkdir('.roamer', { recursive: true });
+await writeFile('.roamer/replay-receipt.json', JSON.stringify(receipt, null, 2));
+console.log(JSON.stringify(receipt));

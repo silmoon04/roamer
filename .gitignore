@@ -1,0 +1,14 @@
+node_modules/
+.env
+.env.*
+!.env.example
+.vercel/
+supabase/.temp/
+service-install.log
+.next/
+output/
+.roamer/
+playwright-report/
+test-results/
+*.tsbuildinfo
+

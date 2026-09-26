@@ -1,0 +1,11 @@
+.env
+.env.*
+.roamer/
+output/
+node_modules/
+.next/
+.git/
+*.tsbuildinfo
+service-install.log
+playwright-report/
+test-results/

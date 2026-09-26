@@ -1,0 +1,6 @@
+import {readFile,writeFile} from 'node:fs/promises';
+const {id}=JSON.parse(await readFile('.roamer/personal-trip.json','utf8'));
+const publicUrl=`https://roamer-chi.vercel.app/?trip=${id}&debug=1`;
+const privateUrl=publicUrl+'#access='+encodeURIComponent(process.env.ROAMER_ACCESS_CODE);
+await writeFile('.roamer/Open Roamer.html',`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="referrer" content="no-referrer"><title>Open your Roamer workspace</title><style>body{font-family:system-ui;background:#f3f3f5;color:#191919;display:grid;place-content:center;min-height:95vh;margin:0}main{max-width:440px;background:#fff;padding:40px;border-radius:24px}a{display:block;background:#6548e8;color:#fff;padding:14px 20px;border-radius:12px;text-decoration:none;text-align:center;margin:24px 0}p{line-height:1.6;color:#62596b}</style><main><h1>Your Roamer workspace</h1><p>Your own Grok bot, a separate research bot, and a debug panel. Tester conversations and preferences are kept in other workspaces.</p><a href="${privateUrl}" rel="noreferrer">Open Roamer and sign in</a><p>This private launch file signs you in. Keep it on your laptop.</p></main></html>`);
+console.log(JSON.stringify({publicUrl,launchFile:'.roamer/Open Roamer.html'}));

@@ -1,0 +1,41 @@
+{
+  "name": "roamer",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Private travel research workspace with a Grok Bot companion.",
+  "engines": {
+    "node": "24.x"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "2.117.2",
+    "@tavily/core": "0.7.13",
+    "dotenv": "18.0.4",
+    "grok-bot-cli": "0.9.0",
+    "lucide-react": "1.48.0",
+    "next": "16.3.6",
+    "postgres": "3.4.9",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@types/node": "24.19.0",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "supabase": "2.118.0",
+    "tsx": "4.23.15",
+    "typescript": "6.0.2",
+    "vitest": "5.0.2"
+  },
+  "scripts": {
+    "dev": "next dev --hostname 127.0.0.1",
+    "build": "next build",
+    "start": "next start --hostname 127.0.0.1",
+    "worker": "tsx --env-file=.env --env-file=.env.local src/worker/index.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "test:e2e": "playwright test",
+    "assets": "node scripts/fetch-assets.mjs"
+  }
+}

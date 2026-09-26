@@ -1,0 +1,32 @@
+[
+  {
+    "id": "krakow",
+    "city": "Kraków",
+    "path": "/images/krakow.jpg",
+    "source": "https://commons.wikimedia.org/wiki/File:Krakow_Rynek_Glowny_panorama_2.jpg",
+    "author": "<a href=\"//commons.wikimedia.org/wiki/User:Andrzej_O\" title=\"User:Andrzej O\">Andrzej Otrębski</a>",
+    "license": "CC BY-SA 4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+    "changes": "Resized and cropped in the interface."
+  },
+  {
+    "id": "ljubljana",
+    "city": "Ljubljana",
+    "path": "/images/ljubljana.jpg",
+    "source": "https://commons.wikimedia.org/wiki/File:R%C3%ADo_Ljubljanica,_Liubliana,_Eslovenia,_2017-04-14,_DD_08_(cropped).jpg",
+    "author": "<bdi><a href=\"https://www.wikidata.org/wiki/Q28147777\" class=\"extiw\" title=\"d:Q28147777\"><span title=\"Spanish photographer\">Diego Delso</span></a></bdi>",
+    "license": "CC BY-SA 4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+    "changes": "Resized and cropped in the interface."
+  },
+  {
+    "id": "porto",
+    "city": "Porto",
+    "path": "/images/porto.jpg",
+    "source": "https://commons.wikimedia.org/wiki/File:Puente_Don_Luis_I,_Oporto,_Portugal,_2012-05-09,_DD_13.JPG",
+    "author": "<bdi><a href=\"https://www.wikidata.org/wiki/Q28147777\" class=\"extiw\" title=\"d:Q28147777\"><span title=\"Spanish photographer\">Diego Delso</span></a></bdi>",
+    "license": "CC BY-SA 3.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0",
+    "changes": "Resized and cropped in the interface."
+  }
+]
