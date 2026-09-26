@@ -95,6 +95,11 @@ for (const width of [390, 1440]) test(`draft idea chips and generated illustrati
     await button.click(); await expect(page.getByLabel('Message Roamer')).toBeFocused();
     await expect(page.getByLabel('Message Roamer')).not.toHaveValue('');
   }
+  for (const selector of ['.welcome-main-photo', '.welcome-side-photo', '.starter-prompt']) {
+    await page.locator(selector).click();
+    await expect(page.getByLabel('Message Roamer')).toBeFocused();
+    await expect(page.getByLabel('Message Roamer')).not.toHaveValue('');
+  }
   expect(fixture.commands).toHaveLength(0);
   await expect(page.locator('.message-list')).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -226,17 +231,17 @@ test('requirements can be edited and removal stays staged until saved', async ({
   expect(fixture.commands[0]).toMatchObject({ kind: 'requirement', requirementId: 'step-free', text: null });
 });
 
-test('fresh chat is centred, fields stay blank and one essentials submission supplies the missing details', async ({page})=>{
+test('fresh chat fills the workspace, fields stay blank and one essentials submission supplies the missing details', async ({page})=>{
   await page.setViewportSize({width:1440,height:1000});const fixture=await mockWorkspace(page,initialState());
   await expect(page.locator('.workspace')).toHaveClass(/chat-only/);await expect(page.locator('#trip-panel')).not.toBeVisible();
   await expect(page.getByText('£1,000',{exact:false})).not.toBeVisible();
-  const box=await page.locator('#chat-panel').boundingBox();expect(box).not.toBeNull();expect(Math.abs(box!.x+box!.width/2-720)).toBeLessThan(2);
+  const box=await page.locator('#chat-panel').boundingBox();const workspace=await page.locator('.workspace').boundingBox();expect(box).not.toBeNull();expect(Math.abs(box!.width-workspace!.width)).toBeLessThan(2);
   await page.getByRole('button',{name:'Edit trip details',exact:true}).click();
   for(const label of ['Leaving from','People','Total budget (£)','Nights','Earliest departure','Latest departure','Specific departure (optional)'])await expect(page.getByRole('dialog').getByLabel(label,{exact:true})).toHaveValue('');
   await expect(page.getByRole('button',{name:'Save trip details',exact:true})).toBeDisabled();await page.keyboard.press('Escape');
-  await page.screenshot({path:'output/visual-state/fresh-centred-1440.png',fullPage:true});
+  await page.screenshot({path:'output/visual-state/fresh-fullwidth-1440.png',fullPage:true});
   await page.getByLabel('Message Roamer').fill('I would like a short city break.');await page.getByRole('button',{name:'Send message',exact:true}).click();await expect(page.locator('.sending-label')).not.toBeVisible();
-  await expect(page.locator('#trip-panel')).not.toBeVisible();
+  await expect(page.locator('#trip-panel')).toBeVisible();
   const next=structuredClone(fixture.state);next.criteria.origin='Edinburgh';next.confirmedCriteria=['origin'];next.messages.push({id:'reply',role:'assistant',text:'Edinburgh is the starting point. How many people are travelling, and what is the total budget?',at:new Date().toISOString()});
   await fixture.update(next);await expect(page.locator('#trip-panel')).toBeVisible();await expect(page.locator('.criteria-card')).toContainText('Budget not set');
   const essentials=page.getByRole('form',{name:'Trip essentials'});await expect(essentials).toBeVisible();
@@ -244,6 +249,30 @@ test('fresh chat is centred, fields stay blank and one essentials submission sup
   await essentials.getByRole('button',{name:'Send details',exact:true}).click();await expect(essentials.getByText('Saved. Waiting for Grok to update the trip.',{exact:true})).toBeVisible();
   expect(fixture.commands).toHaveLength(2);expect(fixture.commands[1].text).toBe('1 traveller. £850 total budget for everyone.');
   await page.setViewportSize({width:390,height:844});await page.screenshot({path:'output/visual-state/essentials-390.png',fullPage:true});
+});
+
+for (const width of [390, 768, 1280, 1440]) test(`first prompt reveals trip immediately without assumed details at ${width}px`, async ({page})=>{
+  await page.setViewportSize({width,height:width<1000?844:1000});
+  const fixture=await mockWorkspace(page,initialState(),{workspace:'personal'});fixture.setDelay(1800);
+  const chat=await page.locator('#chat-panel').boundingBox();const workspace=await page.locator('.workspace').boundingBox();
+  expect(Math.abs(chat!.width-workspace!.width)).toBeLessThan(2);
+  await expect(page.locator('#trip-panel')).toHaveCount(0);
+  await page.getByLabel('Message Roamer').fill('I want a short break.');
+  await page.getByRole('button',{name:'Send message',exact:true}).click();
+  await expect(page.locator('.sending-label')).toBeVisible();
+  await expect(page.locator('#trip-panel')).toHaveCount(1);
+  await expect(page.locator('.workspace')).not.toHaveClass(/chat-only/);
+  if(width<1000){await expect(page.getByRole('tab',{name:'Chat',exact:true})).toHaveAttribute('aria-selected','true');await page.getByRole('tab',{name:'Your trip',exact:true}).click();}
+  await expect(page.locator('#trip-panel')).toBeVisible();
+  await expect(page.locator('#trip-panel')).not.toContainText('£1,000');
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  await expect.poll(()=>fixture.commands.length).toBe(1);
+  await page.emulateMedia({reducedMotion:'reduce'});
+  expect(await page.locator('#trip-panel').evaluate(el=>getComputedStyle(el).animationName)).toBe('none');
+  expect(await page.locator('.workspace').evaluate(el=>getComputedStyle(el).transitionProperty)).toBe('none');
+  await expect(page.locator('.sending-label')).not.toBeVisible();
+  await page.evaluate(async()=>{await document.fonts.ready;await Promise.all([...document.images].filter(img=>img.getBoundingClientRect().width).map(img=>img.decode().catch(()=>{})));});
+  await page.screenshot({path:`output/visual-state/first-prompt-${width}.png`,fullPage:true});
 });
 
 test('a blank criteria editor submits only entered fields and explicit GBP currency',async({page})=>{

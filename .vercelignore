@@ -9,3 +9,4 @@ node_modules/
 service-install.log
 playwright-report/
 test-results/
+social-capture/
