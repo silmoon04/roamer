@@ -26,6 +26,8 @@ These screenshots use synthetic test fixtures to demonstrate the interface. The 
 
 The latest deterministic test run passed **241 tests**, with nine opt-in live tests skipped, and TypeScript checks passed. Tests cover intake, event ordering, stale results, question answers, workspace isolation, provider normalization, model reply parsing, personal reset links and recovery states. Read the [recovery verification](docs/RECOVERY-VERIFICATION.md) for the live intake failure and its repair. Live provider calls remain slower than the demo target. A checked fare or room price does not confirm that accessibility, bed layout or every traveller preference is suitable.
 
+The [current polish verification](docs/POLISH-VERIFICATION.md) includes ten production API checks and one isolated live conversation. In that run, the reply appeared after 13.979 seconds; the saved event reached the browser DOM in 592 ms. The tester explicitly requested no search, so these measurements do not establish shortlist speed.
+
 Native Grok voice synchronisation is **unverified**. Voice remains in the Grok app; no OpenAI API key is required. A consistently completed shortlist within three minutes and a verified replay backup are still unfinished. Debug view exposes inputs, outputs, queue time, task runtime and update timing to make those issues inspectable.
 
 ## Open your personal workspace
