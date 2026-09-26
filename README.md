@@ -2,6 +2,24 @@
 
 A private travel workspace with Grok Bot conversation, structured questions, live research activity and dated flight/accommodation comparisons.
 
+[Open the demo](https://roamer-chi.vercel.app) · [Setup](SETUP.md) · [Worker documentation](src/worker/README.md)
+
+The hosted demo requires a private access code. Roamer asks for missing trip details, keeps the conversation beside a visual shortlist, and shows which provider is working. Supabase persists the conversation and research events. Tavily and Apify handle searches; a local Grok Bot worker handles conversation and direct browser checks.
+
+## Screenshots
+
+These screenshots use synthetic test fixtures to demonstrate the interface. The displayed price is not a live travel offer, and the fixture destination image is not location evidence.
+
+![Desktop conversation, research activity and shortlist](docs/screenshots/desktop.png)
+
+<img src="docs/screenshots/mobile.png" alt="Mobile conversation and research activity" width="390" />
+
+## Submission status
+
+The final deterministic test run passed **200 tests**, and TypeScript checks passed. Tests cover intake, event ordering, stale results, question answers, workspace isolation, provider normalization and recovery states. Live provider calls remain slower than the demo target. A checked fare or room price does not confirm that accessibility, bed layout or every traveller preference is suitable.
+
+Native Grok voice synchronisation is **unverified**. Voice remains in the Grok app; no OpenAI API key is required. A consistently completed shortlist within three minutes and a verified replay backup are still unfinished. Debug view exposes inputs, outputs, queue time, task runtime and update timing to make those issues inspectable.
+
 ## Open your personal workspace
 
 The hosted app is [roamer-chi.vercel.app](https://roamer-chi.vercel.app). Open the local private launcher at `.roamer/Open Roamer.html` for the personal handoff. Keep that file private: it contains access details and is excluded from version control. The launcher contents are not part of the public documentation.
