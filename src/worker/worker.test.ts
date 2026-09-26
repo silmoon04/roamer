@@ -8,10 +8,26 @@ import { backoffDelay, retryConnection } from './resilience';
 import { acceptsBrowserQuote, browserScope, browserTaskIsCurrent } from './browser-scope';
 import { allowedBotEvent, commandBot, receiptMatches, registeredBots, transcriptKey } from './bots';
 import { requirementRequest, transportRequest } from './research-prompts';
-import { browserProtocol } from './protocol';
+import { browserProtocol, protocol } from './protocol';
 
 const context: ProviderContext = { id: 'test', criteria: { ...defaultCriteria, departureDate: '2026-10-10' }, destination: { name: 'Kraków', country: 'Poland', airport: 'KRK' } };
 const at = '2026-09-26T12:00:00.000Z';
+describe('model protocol shape', () => {
+  it('gives every bot an explicit payload-wrapped event example that the parser accepts', () => {
+    for (const prompt of [protocol, browserProtocol('price'), browserProtocol('requirements'), browserProtocol('transport')]) {
+      const example = prompt.match(/<roamer>(.*?)<\/roamer>/)?.[0]
+        .replace('EXACT_REQUEST_TRIP_ID', '11111111-1111-4111-8111-111111111111')
+        .replace('EXACT_REQUEST_COMMAND_ID', '22222222-2222-4222-8222-222222222222')
+        .replace('EXACT_REQUEST_REVISION', '0');
+      expect(example).toBeTruthy();
+      expect(bundlesFromEntry({ id: 'example', kind: 'send-message', message: { type: 'text', content: example } })[0].events).toEqual([{ type: 'assistant_message', payload: { text: 'Your short reply.' } }]);
+    }
+  });
+  it('uses one free-text essentials request without inventing selectable travel facts', () => {
+    expect(protocol).toContain('Do not emit a question event for this intake');
+    expect(protocol).toContain('Omit unknown and unchanged fields from trip_patch.payload');
+  });
+});
 const flight = { origin: 'STN', destination: 'KRK', departureDate: '2026-10-10', returnDate: '2026-10-15', tripType: 'round-trip', currency: 'GBP', price: 142, airlines: ['Ryanair'], outbound: { segments: [{}] }, return: { segments: [{}] } };
 const stay = { name: 'An actual stay', currency: '£', checkInDate: '2026-10-10', checkOutDate: '2026-10-15', url: 'https://www.booking.com/hotel/pl/test.html?group_adults=2', image: 'https://cf.bstatic.com/test.jpg', rooms: [{ available: true, roomType: 'Apartment', options: [{ price: 329.62, displayedPrice: 308.12, excludedTaxesPrice: 21.50, persons: 2, currency: '£', hasGeniusDiscount: false, yourChoices: ['Non-refundable'] }] }] };
 vi.mock('node:fs/promises', () => ({ mkdir: vi.fn().mockResolvedValue(undefined), writeFile: vi.fn().mockResolvedValue(undefined) }));

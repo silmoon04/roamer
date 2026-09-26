@@ -96,15 +96,15 @@ export const browserQuotePayloadSchema = z.object({
   if (p.quote.returnDate <= p.quote.departureDate) ctx.addIssue({ code: 'custom', path: ['quote', 'returnDate'], message: 'The return date must follow departure.' });
 });
 export const modelEventSchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('assistant_message'), payload: z.object({ text: z.string().min(1).max(5000) }) }),
-  z.object({ type: z.literal('trip_patch'), payload: criteriaPatchSchema }),
-  z.object({ type: z.literal('profile_patch'), payload: z.object({ interests: z.array(z.string().max(50)).max(12).optional(), noCar: z.boolean().nullable().optional(), stayStyle: z.string().max(120).optional(), notes: z.array(z.string().max(250)).max(12).optional() }) }),
-  z.object({ type: z.literal('question'), payload: z.object({ id: z.string().max(80), prompt: z.string().max(300), options: z.array(z.string().max(120)).min(2).max(5) }) }),
-  z.object({ type: z.literal('question_answered'), payload: z.object({ id: z.string().max(80), answer: z.string().max(500), skipped: z.boolean().optional() }) }),
-  z.object({ type: z.literal('search_request'), payload: z.object({ destinations: z.array(z.object({ name: z.string().max(80), country: z.string().max(80), airport: z.string().regex(/^[A-Z]{3}$/), reason: z.string().max(300) })).min(1).max(3) }) }),
-  z.object({ type: z.literal('browser_evidence'), payload: z.object({ candidateId: z.string().max(80), summary: z.string().max(500), sources: z.array(sourceSchema).min(1).max(5), noCarVerified: z.boolean() }) }),
-  z.object({ type: z.literal('browser_quote'), payload: browserQuotePayloadSchema }),
-  z.object({ type: z.literal('requirement_check'), payload: requirementCheckPayloadSchema })
+  z.object({ type: z.literal('assistant_message'), payload: z.object({ text: z.string().min(1).max(5000) }).strict() }).strict(),
+  z.object({ type: z.literal('trip_patch'), payload: criteriaPatchSchema }).strict(),
+  z.object({ type: z.literal('profile_patch'), payload: z.object({ interests: z.array(z.string().max(50)).max(12).optional(), noCar: z.boolean().nullable().optional(), stayStyle: z.string().max(120).optional(), notes: z.array(z.string().max(250)).max(12).optional() }).strict() }).strict(),
+  z.object({ type: z.literal('question'), payload: z.object({ id: z.string().max(80), prompt: z.string().max(300), options: z.array(z.string().max(120)).min(2).max(5) }).strict() }).strict(),
+  z.object({ type: z.literal('question_answered'), payload: z.object({ id: z.string().max(80), answer: z.string().max(500), skipped: z.boolean().optional() }).strict() }).strict(),
+  z.object({ type: z.literal('search_request'), payload: z.object({ destinations: z.array(z.object({ name: z.string().max(80), country: z.string().max(80), airport: z.string().regex(/^[A-Z]{3}$/), reason: z.string().max(300) }).strict()).min(1).max(3) }).strict() }).strict(),
+  z.object({ type: z.literal('browser_evidence'), payload: z.object({ candidateId: z.string().max(80), summary: z.string().max(500), sources: z.array(sourceSchema).min(1).max(5), noCarVerified: z.boolean() }).strict() }).strict(),
+  z.object({ type: z.literal('browser_quote'), payload: browserQuotePayloadSchema }).strict(),
+  z.object({ type: z.literal('requirement_check'), payload: requirementCheckPayloadSchema }).strict()
 ]);
 export const modelBundleSchema = z.object({ tripId: z.uuid(), revision: z.number().int().nonnegative(), commandId: z.uuid().optional(), events: z.array(modelEventSchema).min(1).max(15) }).strict();
 export type ModelEvent = z.infer<typeof modelEventSchema>;
@@ -115,6 +115,16 @@ export function parseModelBundles(text: string) {
   for (const match of text.matchAll(/<roamer>\s*([\s\S]*?)\s*<\/roamer>/g)) {
     let json: unknown;
     try { json = JSON.parse(match[1]); } catch { throw new Error('Grok returned an invalid Roamer event.'); }
+    if (json && typeof json === 'object' && !Array.isArray(json)) {
+      const bundle = json as Record<string, unknown>;
+      if (Array.isArray(bundle.events)) json = { ...bundle, events: bundle.events.map(value => {
+        if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+        const entry = value as Record<string, unknown>;
+        if (Object.hasOwn(entry, 'payload')) return entry;
+        const { type, ...payload } = entry;
+        return { type, payload };
+      }) };
+    }
     const parsed = modelBundleSchema.safeParse(json);
     if (!parsed.success) throw new Error('Grok returned an invalid Roamer event.');
     results.push(parsed.data);
