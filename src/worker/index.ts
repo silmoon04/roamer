@@ -1,7 +1,7 @@
 import { mkdir, open, readFile, unlink } from 'node:fs/promises';
 import { applyEvent, canPriceSearch, dates, fingerprint, missingSearchDetails, requirementResults, slug, suitabilityFingerprint, tripRequirements, visibleCriteria, type Action, type Candidate, type Criteria, type DomainEvent } from '../lib/domain';
 import { adminDb, commitEvents, event, getTrip, queueCommand, type CommandRow, type TripRow } from '../lib/db';
-import { discover, searchFlights, searchStays, type Destination } from '../lib/providers';
+import { contradictsStayRequirements, discover, searchFlights, searchStays, stayIsExcluded, type Destination } from '../lib/providers';
 import { browserProtocol, bundlesFromEntry, gbot, protocol, setBotAllowlist, stableId, transcript, type TranscriptEntry } from './bridge';
 import { backoffDelay, retryConnection } from './resilience';
 import { acceptsBrowserQuote, browserScope, browserTaskIsCurrent } from './browser-scope';
@@ -10,6 +10,7 @@ import { destinationPhoto } from '../lib/destination-photo';
 import { requirementRequest, transportDiscoveryQuery, transportRequest } from './research-prompts';
 import { priceUpdate } from './progress';
 import { requestScopedStop } from './deadline';
+import { excludedStayNames } from './stay-constraints';
 
 const db = adminDb();
 const ownerId = process.env.ROAMER_USER_ID;
@@ -64,6 +65,11 @@ async function action(command: CommandRow, status: Action['status'], detail?: st
     return [event(trip.id, trip.state.revision, 'action', payload as unknown as Record<string, unknown>)];
   });
 }
+async function stayExclusions(tripId: string, id: string, extra = '') {
+  const { data, error } = await db.from('roamer_commands').select('payload').eq('owner_id', ownerId).eq('trip_id', tripId).eq('kind', 'conversation').eq('payload->>candidateId', id).order('created_at');
+  if (error) throw error;
+  return excludedStayNames(data ?? [], extra);
+}
 async function enqueueSearches(tripId: string, destinations: Destination[], excludeStay = '', onlyCandidate?: string) {
   for (const destination of destinations.slice(0, 3)) {
     let trip = await getTrip(tripId, ownerId); const id = candidateId(destination);
@@ -72,15 +78,18 @@ async function enqueueSearches(tripId: string, destinations: Destination[], excl
       id, name: destination.name, country: destination.country, airport: destination.airport, image: imageFor(destination.name), summary: destination.reason ?? 'Checking how this fits your trip.', highlights: [], sources: [], status: 'researching', generation: t.state.revision
     }, stableId(`${tripId}:candidate:${id}:${t.state.revision}`))]);
     const candidate = trip.state.candidates.find(c => c.id === id)!;
+    const excludedStays = await stayExclusions(tripId, id, excludeStay);
+    const stayRequirements = tripRequirements(trip.state).map(requirement => requirement.text);
     const generation = (candidate as Candidate & { generation?: number }).generation ?? 0;
     for (const kind of ['discovery', 'flights', 'stays'] as const) {
       if (onlyCandidate && kind !== 'stays') continue;
       if (kind !== 'discovery' && !canPriceSearch(trip.state)) continue;
       const dataExists = kind === 'flights' ? candidate.flight : kind === 'stays' ? candidate.stay : candidate.sources.length;
-      if (kind !== 'discovery' && dataExists && !(excludeStay && kind === 'stays')) continue;
+      const stayContradicted = kind === 'stays' && candidate.stay && (stayIsExcluded(candidate.stay.label, excludedStays) || contradictsStayRequirements(candidate.stay.facts ?? {}, trip.state.criteria.stayStyle, stayRequirements));
+      if (kind !== 'discovery' && dataExists && !(excludeStay && kind === 'stays') && !stayContradicted) continue;
       const fp = fingerprint(trip.state.criteria, kind);
-      const commandId = stableId(`${tripId}:${id}:${generation}:${kind}:${fp}:${kind === 'stays' ? excludeStay : ''}`);
-      await queueCommand(trip, 'research', { kind, destination, candidateId: id, criteria: trip.state.criteria, datesKnown: visibleCriteria(trip.state).departureDate !== null || (visibleCriteria(trip.state).departureStart !== null && visibleCriteria(trip.state).departureEnd !== null), fingerprint: fp, excludeStay }, commandId);
+      const commandId = stableId(`${tripId}:${id}:${generation}:${kind}:${fp}:${kind === 'stays' ? JSON.stringify({ excludedStays, stayRequirements }) : ''}`);
+      await queueCommand(trip, 'research', { kind, destination, candidateId: id, criteria: trip.state.criteria, datesKnown: visibleCriteria(trip.state).departureDate !== null || (visibleCriteria(trip.state).departureStart !== null && visibleCriteria(trip.state).departureEnd !== null), fingerprint: fp, excludeStay, ...(kind === 'stays' ? { excludedStays, stayRequirements } : {}) }, commandId);
     }
   }
 }
@@ -126,6 +135,11 @@ async function ingest(lane: BotLane, entry: TranscriptEntry) {
     if (!already) for (const modelEvent of bundle.events) {
       if (!allowedBotEvent(receipt, modelEvent.type, modelEvent.payload)) throw new RejectedBundleError('The update is outside this bot’s requested responsibility.');
       if (modelEvent.type === 'browser_quote' && !acceptsBrowserQuote(receipt, bundle.commandId, modelEvent.payload.candidateId, modelEvent.payload.kind)) throw new RejectedBundleError('A browser price update did not match its requested task.');
+      if (modelEvent.type === 'browser_quote' && modelEvent.payload.kind === 'stays') {
+        const quote = modelEvent.payload.quote;
+        const exclusions = Array.isArray(receipt?.payload.excludedStays) ? receipt.payload.excludedStays.filter((name): name is string => typeof name === 'string') : [];
+        if (stayIsExcluded(quote.label, exclusions) || contradictsStayRequirements(quote.facts ?? {}, trip.state.criteria.stayStyle, tripRequirements(trip.state).map(requirement => requirement.text))) throw new RejectedBundleError('The website quote conflicts with a requested stay exclusion or room requirement.');
+      }
       if (modelEvent.type === 'browser_quote' || modelEvent.type === 'browser_evidence' || modelEvent.type === 'requirement_check') {
         if (!receipt || !browserTaskIsCurrent(receipt, trip.state.criteria, trip.state.candidates, tripRequirements(trip.state))) { await finishReceipt(lane, receipt, 'superseded'); return; }
       }
@@ -315,12 +329,14 @@ async function runResearch(command: CommandRow, signal: AbortSignal) {
     if (count) { await action(command, 'superseded', 'A different stay was requested.'); await setCommand(command, 'superseded'); return; }
   }
   if (fingerprint(current.state.criteria, kind) !== fp) { await action(command, 'superseded', 'Trip details changed.'); await setCommand(command, 'superseded'); return; }
-  const context = { id: command.id, criteria, destination, signal, datesKnown: command.payload.datesKnown === true };
+  const excludedStays = kind === 'stays' ? await stayExclusions(command.trip_id, id, excludeStay) : [];
+  const context = { id: command.id, criteria, destination, signal, datesKnown: command.payload.datesKnown === true, excludedStays, stayRequirements: tripRequirements(current.state).map(requirement => requirement.text) };
   const [result, photo] = kind === 'discovery' ? await Promise.all([discover(context), destinationPhoto(destination.name, destination.country).catch(() => null)]) : [kind === 'flights' ? await searchFlights(context) : await searchStays(context, excludeStay), null];
   if (!result.length) throw new Error(kind === 'discovery' ? 'No useful sources were returned.' : kind === 'stays' ? 'No stay price could be confirmed for the current dates, party and room requirements.' : 'No return fare could be confirmed for the current dates and party.');
   let accepted = false;
   await commitEvents(command.trip_id, trip => {
     if (fingerprint(trip.state.criteria, kind) !== fp || trip.state.actions.find(a => a.id === command.id)?.status === 'superseded') return null;
+    if (kind === 'stays' && contradictsStayRequirements((result[0] as import('../lib/domain').Quote).facts ?? {}, trip.state.criteria.stayStyle, tripRequirements(trip.state).map(requirement => requirement.text))) return null;
     accepted = true;
     if (kind === 'discovery') {
       const c = trip.state.candidates.find(c => c.id === id); if (!c) return null;
@@ -374,9 +390,10 @@ async function enqueuePriceFallback(command: CommandRow) {
   if (!candidate) return false;
   const d = dates(trip.state.criteria);
   const destination = { name: candidate.name, country: candidate.country, airport: candidate.airport };
-  const task = kind === 'flights' ? `return flights from ${trip.state.criteria.origin} (${trip.state.criteria.originCode}) to ${candidate.name} (${candidate.airport})` : `one stay in ${candidate.name}, ${candidate.country}${command.payload.excludeStay ? `, excluding ${command.payload.excludeStay}` : ''}`;
+  const excludedStays = kind === 'stays' ? await stayExclusions(trip.id, candidate.id, String(command.payload.excludeStay ?? '')) : [];
+  const task = kind === 'flights' ? `return flights from ${trip.state.criteria.origin} (${trip.state.criteria.originCode}) to ${candidate.name} (${candidate.airport})` : `one stay in ${candidate.name}, ${candidate.country}${excludedStays.length ? `, excluding these previously rejected properties: ${JSON.stringify(excludedStays)}` : ''}`;
   const text = `The structured search could not confirm a price for candidate ${candidate.id}. Check ${task} in your actual browser for ${trip.state.criteria.travellers} adults, ${d.departureDate}–${d.returnDate}, GBP. Return browser_quote kind=${kind} only after verifying the current entire-party return/whole-stay price. Preserve the exact requirements ledger; record selected-room facts and cancellation where relevant. State included and unresolved charges. Never substitute per-person/per-night amounts, assume suitability from occupancy, or reuse a failed/old price. Explain blocked access without a quote.`;
-  await queueCommand(trip, 'browser', { purpose: 'price', priceKind: kind, parentCommandId: command.id, candidateId: candidate.id, browserScope: browserScope(trip.state.criteria, candidate, 'price', kind), destination, text }, stableId(`${command.id}:browser-price`));
+  await queueCommand(trip, 'browser', { purpose: 'price', priceKind: kind, parentCommandId: command.id, candidateId: candidate.id, browserScope: browserScope(trip.state.criteria, candidate, 'price', kind), excludedStays, destination, text }, stableId(`${command.id}:browser-price`));
   return true;
 }
 async function processCommand(command: CommandRow, abort: AbortController) {

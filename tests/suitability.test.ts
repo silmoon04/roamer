@@ -77,4 +77,16 @@ describe('requirements and suitability evidence', () => {
   it('does not let model output edit or remove original requirements', () => { expect(() => parseModelBundles(`<roamer>${JSON.stringify({ tripId, revision: 0, events: [{ type: 'requirement_edit', payload: { id: 'anything', text: null } }] })}</roamer>`)).toThrow(); });
   it('does not make standalone acknowledgements into requirements or discard attached constraints', () => { const thanks = applyEvent(pricedState(), change('user_message', { text: 'Thanks!' })); expect(thanks.messages[0].text).toBe('Thanks!'); expect(thanks.requirements).toEqual([]); const request = applyEvent(thanks, change('user_message', { text: 'Thanks, but we still need a step-free entrance.' })); expect(request.requirements?.map(requirement => requirement.text)).toEqual(['Thanks, but we still need a step-free entrance.']); });
   it('removes stale candidate date prose and ignores a late candidate update', () => { const next = applyEvent(pricedState(), change('trip_patch', { departureDate: '2026-10-16' })); expect(next.candidates[0].summary).toContain('2026-10-16 to 2026-10-21'); expect(next.candidates[0].summary).not.toContain('10–15'); expect(applyEvent(next, change('candidate', { ...next.candidates[0], summary: 'Check 10–15 October' }, 0)).candidates[0].summary).toBe(next.candidates[0].summary); });
+  it('keeps the old date in original wording but verifies only the newly selected dates', () => {
+    let state = applyEvent(pricedState(), change('user_message', { text: 'Five nights departing 12 October, with a private hotel room.' }));
+    state = applyEvent(state, change('trip_patch', { departureDate: '2026-10-13' }));
+    const reference = pricedState().candidates[0];
+    state = applyEvent(state, change('quote', { candidateId: 'vienna', kind: 'flights', quote: { ...reference.flight, ...dates(state.criteria) } }, state.revision));
+    state = applyEvent(state, change('quote', { candidateId: 'vienna', kind: 'stays', quote: { ...reference.stay, ...dates(state.criteria) } }, state.revision));
+    expect(state.requirements?.[0].text).toContain('12 October'); expect(state.criteria.departureDate).toBe('2026-10-13');
+    const verified = applyEvent(state, change('requirement_check', { ...check(state), summary: 'Private hotel room for the current 13–18 October trip.', sources: [{ title: 'Selected room', url: 'https://example.com/room', checkedAt: at, excerpt: 'Private hotel room, two adults, 13–18 October.' }] }, state.revision));
+    expect(verified.candidates[0].status).toBe('checked'); expect(verified.candidates[0].stay?.departureDate).toBe('2026-10-13');
+    const outdated = applyEvent(verified, change('quote', { candidateId: 'vienna', kind: 'stays', quote: { ...reference.stay, departureDate: '2026-10-12', returnDate: '2026-10-17' } }, verified.revision));
+    expect(outdated.candidates[0].stay?.departureDate).toBe('2026-10-13');
+  });
 });

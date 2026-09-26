@@ -10,8 +10,23 @@ const number = (v: unknown) => typeof v === 'number' && Number.isFinite(v) ? v :
 const safeUrl = (v: unknown) => /^https?:\/\//.test(str(v)) ? str(v) : '';
 const round = (v: number) => Math.round(v * 100) / 100;
 export type Destination = { name: string; country: string; airport: string; reason?: string };
-export type ProviderContext = { id: string; criteria: Criteria; destination: Destination; signal?: AbortSignal; datesKnown?: boolean };
+export type ProviderContext = { id: string; criteria: Criteria; destination: Destination; signal?: AbortSignal; datesKnown?: boolean; stayRequirements?: string[]; excludedStays?: string[] };
 export type StayFacts = QuoteFacts;
+const stayName = (name: string) => name.normalize('NFKC').trim().replace(/\s+/g, ' ').toLowerCase();
+export function stayIsExcluded(name: string, exclusions: string[]) { return exclusions.some(excluded => stayName(excluded) === stayName(name)); }
+export function requiresPrivateBathroom(requirements: string[]) {
+  let required = false;
+  for (const text of requirements) {
+    const plain = text.toLowerCase();
+    if (/\b(?:don.t|do not|no longer)\s+(?:need|require|want)\s+(?:a\s+)?private bathroom\b/.test(plain)) { required = false; continue; }
+    if (/\bor\b/.test(plain)) continue;
+    if (/(?:^|[,;]\s*)private bathroom\b|\b(?:need|require|want|must have|with)\s+(?:a\s+)?private bathroom\b/.test(plain)) required = true;
+  }
+  return required;
+}
+export function contradictsStayRequirements(facts: StayFacts, style: string, requirements: string[] = []) {
+  return contradictsStayStyle(facts, style) || (requiresPrivateBathroom([style, ...requirements]) && /\bshared\s+(?:bathroom|toilet)\b/i.test(`${facts.roomName ?? ''} ${facts.bathroom ?? ''}`));
+}
 
 export function stayFacts(row: Row, room: Row, option: Row): StayFacts {
   const rawBeds = list(room.bedTypes).flatMap(group => list(record(group).beds).map(str)).filter(Boolean);
@@ -20,7 +35,8 @@ export function stayFacts(row: Row, room: Row, option: Row): StayFacts {
   const certainBeds = rawBeds.length > 0 && beds.length === rawBeds.length && beds.every(match => Number(match[1]) > 0 && Number(match[1]) <= 30 && match[2].length <= 150) && beds.length <= 20 && !rawBeds.some(text => /\bor\b|\//i.test(text));
   const cancellation = list(option.yourChoices).map(str).filter(text => /cancel|refund/i.test(text)).join(' · ').slice(0, 600);
   const access = list(room.facilities).map(str).filter(text => /wheelchair|accessible|ground floor|lift|elevator|stairs|step.free/i.test(text)).join(' · ').slice(0, 600);
-  return { ...(str(row.type) ? { propertyType: str(row.type).slice(0, 120) } : {}), ...(str(room.roomType) ? { roomName: str(room.roomType).slice(0, 200) } : {}), ...(certainBeds ? { beds: beds.map(match => ({ type: match[2], count: Number(match[1]) })) } : {}), ...(cancellation ? { cancellation } : {}), ...(access ? { accessibility: access } : {}) };
+  const bathroom = list(room.facilities).map(str).filter(text => /private bathroom|shared (?:bathroom|toilet)|en.suite/i.test(text)).join(' · ').slice(0, 600);
+  return { ...(str(row.type) ? { propertyType: str(row.type).slice(0, 120) } : {}), ...(str(room.roomType) ? { roomName: str(room.roomType).slice(0, 200) } : {}), ...(certainBeds ? { beds: beds.map(match => ({ type: match[2], count: Number(match[1]) })) } : {}), ...(cancellation ? { cancellation } : {}), ...(access ? { accessibility: access } : {}), ...(bathroom ? { bathroom } : {}) };
 }
 
 export function contradictsStayStyle(facts: StayFacts, style: string) {
@@ -67,14 +83,14 @@ export function normalizeStays(rows: unknown[], context: ProviderContext, checke
   const d = dates(context.criteria);
   return rows.flatMap(value => {
     const row = record(value); const name = str(row.name);
-    if (!name || (exclude && name.toLowerCase() === exclude.toLowerCase()) || row.checkInDate !== d.departureDate || row.checkOutDate !== d.returnDate || !['GBP', '£'].includes(str(row.currency))) return [];
+    if (!name || stayIsExcluded(name, [...context.excludedStays ?? [], ...(exclude ? [exclude] : [])]) || row.checkInDate !== d.departureDate || row.checkOutDate !== d.returnDate || !['GBP', '£'].includes(str(row.currency))) return [];
     const url = safeUrl(row.url); if (!url) return [];
     const params = new URL(url).searchParams;
     if (Number(params.get('group_adults')) !== context.criteria.travellers) return [];
     const options = list(row.rooms).flatMap(v => {
       const room = record(v); if (room.available !== true) return [];
       return list(room.options).map(v => ({ room, option: record(v) }));
-    }).filter(({ room, option }) => number(option.price) > 0 && ['GBP', '£'].includes(str(option.currency)) && number(option.persons) === context.criteria.travellers && option.hasGeniusDiscount !== true && !contradictsStayStyle(stayFacts(row, room, option), context.criteria.stayStyle))
+    }).filter(({ room, option }) => number(option.price) > 0 && ['GBP', '£'].includes(str(option.currency)) && number(option.persons) === context.criteria.travellers && option.hasGeniusDiscount !== true && !contradictsStayRequirements(stayFacts(row, room, option), context.criteria.stayStyle, context.stayRequirements))
       .sort((a, b) => number(a.option.price) - number(b.option.price));
     if (!options.length) return [];
     const { room, option } = options[0];
@@ -148,7 +164,7 @@ export async function searchFlights(context: ProviderContext) {
 }
 export async function searchStays(context: ProviderContext, exclude = '') {
   const d = dates(context.criteria);
-  const input = { search: `${context.destination.name}, ${context.destination.country}`, checkIn: d.departureDate, checkOut: d.returnDate, adults: context.criteria.travellers, rooms: 1, children: 0, currency: 'GBP', language: 'en-gb', maxItems: exclude ? 6 : 4, sortBy: 'review_score_and_price', extractAdditionalHotelData: false };
+  const input = { search: `${context.destination.name}, ${context.destination.country}`, checkIn: d.departureDate, checkOut: d.returnDate, adults: context.criteria.travellers, rooms: 1, children: 0, currency: 'GBP', language: 'en-gb', maxItems: exclude || context.excludedStays?.length ? 6 : 4, sortBy: 'review_score_and_price', extractAdditionalHotelData: false };
   const result = await runActor('voyager~booking-scraper', input, context);
   return normalizeStays(result.rows, context, result.checkedAt, result.rawId, exclude);
 }

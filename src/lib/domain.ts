@@ -22,7 +22,7 @@ export type Source = { title: string; url: string; checkedAt: string; excerpt?: 
 export type RequirementSource = 'message' | 'answer' | 'stayStyle' | 'profile' | 'edit';
 export type TripRequirement = { id: string; text: string; source: RequirementSource; sourceId: string; provenance?: { id: string; source: RequirementSource; sourceId: string }[] };
 export type RequirementCheck = { requirementId: string; status: 'supported' | 'contradicted' | 'unknown'; summary: string; sources: Source[]; fingerprint: string; checkedAt: string };
-export type QuoteFacts = { propertyType?: string; roomName?: string; beds?: { type: string; count: number }[]; cancellation?: string; accessibility?: string };
+export type QuoteFacts = { propertyType?: string; roomName?: string; beds?: { type: string; count: number }[]; bathroom?: string; cancellation?: string; accessibility?: string };
 export type Action = { id: string; label: string; provider: string; status: 'queued' | 'running' | 'done' | 'error' | 'superseded'; startedAt: string; queuedAt?: string; finishedAt?: string; detail?: string; retryable?: boolean; kind: 'conversation' | 'discovery' | 'flights' | 'stays' | 'browser'; destination?: string };
 export type Quote = { total: number; currency: 'GBP'; travellers: number; departureDate: string; returnDate: string; checkedAt: string; url: string; label: string; scope: 'return-flights' | 'whole-stay'; includes: string; image?: string; provider: string; rawId?: string; facts?: QuoteFacts };
 export type Candidate = {
@@ -74,7 +74,7 @@ export function canPriceSearch(state: Pick<TripState, 'criteria' | 'confirmedCri
 
 const safeUrl = z.string().url().refine(s => /^https?:\/\//.test(s), 'Use an HTTP link');
 const sourceSchema = z.object({ title: z.string().max(160), url: safeUrl, checkedAt: z.iso.datetime(), excerpt: z.string().max(600).optional() });
-export const quoteFactsSchema = z.object({ propertyType: z.string().max(200).optional(), roomName: z.string().max(300).optional(), beds: z.array(z.object({ type: z.string().min(1).max(150), count: z.number().int().positive().max(30) }).strict()).max(20).optional(), cancellation: z.string().max(1000).optional(), accessibility: z.string().max(1000).optional() }).strict();
+export const quoteFactsSchema = z.object({ propertyType: z.string().max(200).optional(), roomName: z.string().max(300).optional(), beds: z.array(z.object({ type: z.string().min(1).max(150), count: z.number().int().positive().max(30) }).strict()).max(20).optional(), bathroom: z.string().max(600).optional(), cancellation: z.string().max(1000).optional(), accessibility: z.string().max(1000).optional() }).strict();
 export const requirementCheckPayloadSchema = z.object({
   candidateId: z.string().min(1).max(80), requirementId: z.string().min(1).max(160),
   status: z.enum(['supported', 'contradicted', 'unknown']), summary: z.string().min(1).max(1000),

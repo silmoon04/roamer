@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { defaultCriteria, suitabilityFingerprint, type Candidate, type TripRequirement } from '../lib/domain';
 import type { CommandRow } from '../lib/db';
-import { contradictsStayStyle, normalizeFlights, normalizeStays, searchFlights, stayFacts, stayTaxDescription, type ProviderContext } from '../lib/providers';
+import { contradictsStayRequirements, contradictsStayStyle, normalizeFlights, normalizeStays, requiresPrivateBathroom, searchFlights, stayFacts, stayTaxDescription, type ProviderContext } from '../lib/providers';
 import { writeFile } from 'node:fs/promises';
 import { assistantText, bundlesFromEntry, gbot, setBotAllowlist, stableId } from './bridge';
 import { backoffDelay, retryConnection } from './resilience';
@@ -9,6 +9,7 @@ import { acceptsBrowserQuote, browserScope, browserTaskIsCurrent } from './brows
 import { allowedBotEvent, commandBot, receiptMatches, registeredBots, transcriptKey } from './bots';
 import { requirementRequest, transportRequest } from './research-prompts';
 import { browserProtocol, protocol } from './protocol';
+import { excludedStayNames } from './stay-constraints';
 
 const context: ProviderContext = { id: 'test', criteria: { ...defaultCriteria, departureDate: '2026-10-10' }, destination: { name: 'Kraków', country: 'Poland', airport: 'KRK' } };
 const at = '2026-09-26T12:00:00.000Z';
@@ -34,6 +35,24 @@ vi.mock('node:fs/promises', () => ({ mkdir: vi.fn().mockResolvedValue(undefined)
 afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); vi.clearAllMocks(); });
 
 describe('provider evidence normalization', () => {
+  it('retains previous stay exclusions when a later search changes dates', () => {
+    const excludedStays = excludedStayNames([{ payload: { candidateId: 'krakow-krk', excludeStay: 'An actual stay' } }, { payload: { excludeStay: ' AN ACTUAL STAY ' } }]);
+    expect(excludedStays).toHaveLength(1);
+    expect(normalizeStays([stay], { ...context, excludedStays }, at, 'new-dates-run')).toEqual([]);
+  });
+  it('rejects an explicitly shared room bathroom when the user asks for a private bathroom', () => {
+    const shared = { ...stay, rooms: [{ ...stay.rooms[0], roomType: 'Double Room with Shared Toilet' }] };
+    expect(normalizeStays([shared], { ...context, stayRequirements: ['For the replacement stay, we need a private bathroom.'] }, at, 'run')).toEqual([]);
+    const facility = stayFacts({}, { facilities: ['Shared bathroom'] }, {});
+    expect(facility.bathroom).toBe('Shared bathroom');
+    expect(contradictsStayRequirements(facility, 'cosy', ['We need a private bathroom.'])).toBe(true);
+  });
+  it('keeps unverified bathrooms provisional and respects an explicit removal of the requirement', () => {
+    expect(contradictsStayRequirements({}, 'cosy', ['We need a private bathroom.'])).toBe(false);
+    expect(requiresPrivateBathroom(['We need a private bathroom.', 'We no longer need a private bathroom.'])).toBe(false);
+    expect(requiresPrivateBathroom(['A private or shared bathroom is fine.'])).toBe(false);
+    expect(stayFacts({}, { facilities: ['Private bathroom'] }, {}).bathroom).toBe('Private bathroom');
+  });
   it('keeps the actor party price once and dates both return legs', () => {
     const quote = normalizeFlights([flight], context, at, 'run')[0];
     expect(quote.total).toBe(142); expect(quote.travellers).toBe(2); expect(quote.scope).toBe('return-flights');
