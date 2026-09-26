@@ -6,17 +6,25 @@ A private travel workspace with Grok Bot conversation, structured questions, liv
 
 The hosted demo requires a private access code. Roamer asks for missing trip details, keeps the conversation beside a visual shortlist, and shows which provider is working. Supabase persists the conversation and research events. Tavily and Apify handle searches; a local Grok Bot worker handles conversation and direct browser checks.
 
+## Product video
+
+[![Watch the Roamer demo](docs/video/roamer-demo-poster.png)](https://raw.githubusercontent.com/silmoon04/roamer/main/docs/video/roamer-demo.mp4)
+
+[Watch or download the 61-second demo](https://raw.githubusercontent.com/silmoon04/roamer/main/docs/video/roamer-demo.mp4) · [Recording notes](docs/demo-video.md) · [Measured live run](docs/LIVE-RUN.md)
+
+Actual service footage with waiting shortened and labelled. Later preference changes appear in the saved conversation and results, rather than every click being captured. Prices arrived while conversation continued; transport and suitability checks remained partial. Native voice is not shown or verified.
+
 ## Screenshots
 
 These screenshots use synthetic test fixtures to demonstrate the interface. The displayed price is not a live travel offer, and the fixture destination image is not location evidence.
 
 ![Desktop conversation, research activity and shortlist](docs/screenshots/desktop.png)
 
-<img src="docs/screenshots/mobile.png" alt="Mobile conversation and research activity" width="390" />
+<img src="docs/screenshots/mobile.png" alt="Mobile shortlist and research activity" width="390" />
 
 ## Submission status
 
-The final deterministic test run passed **200 tests**, and TypeScript checks passed. Tests cover intake, event ordering, stale results, question answers, workspace isolation, provider normalization and recovery states. Live provider calls remain slower than the demo target. A checked fare or room price does not confirm that accessibility, bed layout or every traveller preference is suitable.
+The latest deterministic test run passed **227 tests**, with nine opt-in live tests skipped, and TypeScript checks passed. Tests cover intake, event ordering, stale results, question answers, workspace isolation, provider normalization, model reply parsing and recovery states. Read the [recovery verification](docs/RECOVERY-VERIFICATION.md) for the live intake failure and its repair. Live provider calls remain slower than the demo target. A checked fare or room price does not confirm that accessibility, bed layout or every traveller preference is suitable.
 
 Native Grok voice synchronisation is **unverified**. Voice remains in the Grok app; no OpenAI API key is required. A consistently completed shortlist within three minutes and a verified replay backup are still unfinished. Debug view exposes inputs, outputs, queue time, task runtime and update timing to make those issues inspectable.
 
@@ -26,7 +34,7 @@ The hosted app is [roamer-chi.vercel.app](https://roamer-chi.vercel.app). Open t
 
 Your conversation uses **Roamer Personal**. Direct browser checks use the separate **Roamer Personal Research** bot, so a long browser task does not occupy your conversation bot. The laptop worker and signed-in Grok desktop app are still required even when the website is hosted on Vercel.
 
-Automated tester submissions are paused for this handoff. The worker remains available for messages you choose to send. Read [personal testing notes](docs/PERSONAL-TESTING.md) for the known limitations and the evidence behind them. Native spoken voice synchronisation has not been verified.
+Automated tests use dedicated tester workspaces and bots. Read [personal testing notes](docs/PERSONAL-TESTING.md) for the earlier handoff evidence and limitations. Native spoken voice synchronisation has not been verified.
 
 Open **Debug view** to inspect **Timing & tasks**, **Inputs & outputs**, or **Your feedback**. **Save testing note** records your comment with the trip without sending it to Grok. **Export JSON** includes sanitized debug records and browser timing samples. The panel refreshes every five seconds while open; a dash means no timing sample exists yet. Queue wait, running time, database update delay and bridge delay are separate measurements.
 
@@ -65,9 +73,9 @@ The first version stops at a shortlist and source/booking links. It does not res
 | Workspace | Conversation bot | Browser checks |
 | --- | --- | --- |
 | `personal` | Roamer Personal | Roamer Personal Research |
-| `stress-careful` | Dedicated careful-couple tester bot | Its own tester bot |
-| `stress-slower` | Dedicated slower-travel tester bot | Its own tester bot |
-| `stress-friends` | Dedicated friends tester bot | Its own tester bot |
+| `stress-careful` | Dedicated careful-couple tester bot | Its registered research bot |
+| `stress-slower` | Dedicated slower-travel tester bot | Its registered research bot |
+| `stress-friends` | Dedicated friends tester bot | Its registered research bot |
 
 The server-owned `roamer_workspaces` registry supplies each new trip's bot IDs and saved preferences. Trip bindings are fixed at creation. Replies to website commands must match the appropriate bot, trip and requested task. Each bot has its own execution lane and heartbeat; research providers still share bounded capacity.
 
@@ -94,7 +102,7 @@ The browser suite uses Chrome, a running local server and isolated Supabase trip
 
 At the personal handoff, the full unit run recorded **135 passes**; nine opt-in live queue tests were skipped. Seven live API/database isolation checks passed, and a separate rolled-back transaction confirmed preference isolation. The personal workspace and debug panels were inspected at **390 and 1440 pixels**, with no horizontal overflow or browser JavaScript errors. Saving feedback was checked on a disposable tester trip; the personal trip was left unchanged. These checks do not establish a completed live shortlist or spoken voice support on the new bots.
 
-Opt-in database queue tests now use `stress-careful` and refuse to run while a fresh worker heartbeat is present. Do not restart stress scripts during the personal handoff. Earlier scenario scripts and browser fixtures can enqueue real work; review their workspace selection before running them again.
+Opt-in database queue tests use `stress-careful` and refuse to run while a fresh worker heartbeat is present. Earlier scenario scripts and browser fixtures can enqueue real work; review their workspace selection before running them again. Coordinate live stress runs with anyone using the private demo.
 
 Browser screenshots, traces and measured timings are written under the ignored `output/playwright` directory. Raw provider receipts are private local files under `.roamer`; application results contain only the fields needed for comparison and source checking.
 

@@ -1,56 +1,62 @@
 # Service setup
 
-Checked on 26 September 2026. Supabase, v0, and Tavily credits are confirmed. Cursor's referral is already used, but its account credit balance could not be verified.
+Roamer has a Next.js website, a Supabase database and a local Node worker. The deployed demo is [roamer-chi.vercel.app](https://roamer-chi.vercel.app). Its access code is private.
 
-## Local tools
+## Prerequisites
 
-- Cursor 3.8.11 is installed and its command runs.
-- Node.js 24.18.0, npm 10.9.1, and Git 2.47.1 are available.
-- This folder has the Supabase JavaScript client 2.117.2 and Tavily client 0.7.13. Both imports passed; the final project dependency audit reported zero vulnerabilities.
-- Supabase CLI 2.118.0 is installed in this project; Vercel CLI 60.1.3 is installed globally. Both version checks passed.
-- Docker is installed, but its Linux engine is not running. A local Supabase stack has not been started.
+- Node.js 24 and npm.
+- A Supabase project with the migrations in `supabase/migrations` applied in filename order.
+- A dedicated Supabase demo user and a private password used as `ROAMER_ACCESS_CODE`.
+- Tavily and Apify credentials for searches.
+- The Grok desktop app, signed in, with dedicated conversation and research bots.
 
-The folder was empty before setup. It now contains tooling dependencies, a lockfile, a secret-file ignore list, `.env.example`, and a local `.env` containing the Tavily API key. There is no application or deployment yet.
+Install the pinned dependencies with `npm ci`. The community `grok-bot-cli` dependency is pinned to version `0.9.0`; it uses the desktop app's local session. No OpenAI API key is needed.
 
-## Accounts and credits
+## Local configuration
 
-| Service | Verified setup | Credit status |
-| --- | --- | --- |
-| Cursor | Desktop command works. Browser signed in to the City University account, showing Free plan. | Referral says already used. You confirmed redemption on this account, but billing and checkout did not display a credit balance or discount. Cursor support or the event organizer must clarify the remaining balance. |
-| Supabase | Browser and CLI authenticated. Created `silmoon04's Org` on Free plan, organization `octcbjwqnwgfapqevrvv`. Spend cap enabled. | $25.00 credit balance confirmed after CAPTCHA completion. No expiry was shown. |
-| Vercel / v0 | Vercel CLI authenticated as `hssilmoon12-6459`, workspace `hssilmoon12-gmailcoms-projects`, Hobby plan. v0 shows complimentary Plus. | Redeemed $30 in v0 credits, bringing the displayed total to $40. The added $30 expires 26 October 2026. These are v0 credits; this does not establish a Vercel hosting credit balance. |
-| Tavily | Billing-address requirement cleared. Free Researcher account; existing API key configured locally. Browser and local SDK searches passed. | 8,000 add-on credits redeemed, in addition to the 1,000 monthly allowance. Verification searches consumed 3 credits in total. |
+Copy `.env.example` to `.env.local` and fill in the values for your own project. Keep both `.env` and `.env.local` private. The worker command loads both files, so create an empty `.env` if your values are all in `.env.local`.
 
-The promo codes remain in the chat and are not stored in this project. No paid subscription or credit purchase was completed. v0 auto-recharge and Tavily pay-as-you-go/auto-upgrade are disabled.
+| Variable | Used by |
+| --- | --- |
+| `NEXT_PUBLIC_SUPABASE_URL` | Website and worker |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Website |
+| `SUPABASE_SERVICE_ROLE_KEY` | Server routes and worker only |
+| `ROAMER_USER_ID`, `ROAMER_USER_EMAIL` | Dedicated demo account |
+| `ROAMER_ACCESS_CODE` | Private demo sign-in |
+| `TAVILY_API_KEY`, `APIFY_TOKEN` | Local worker only |
 
-## Configuration
+The existing `scripts/setup-local.mjs` is an operator helper, not a complete installer. It creates the dedicated demo user when its ID is missing. If `APIFY_TOKEN` is absent, it expects an authorised `APIFY_KEY_1` in a sibling `misc/.env`; otherwise, set the token directly before using the helper.
 
-The existing `.env` contains the Tavily API key and is ignored by Git. Keep this key in server-side code. Do not overwrite `.env` with the example or put the key in a browser-exposed environment variable.
+Register each workspace in `roamer_workspaces` with its owner ID, conversation bot ID and optional separate research bot ID. Trips retain those bindings. Provisioning scripts under `scripts/` depend on local receipts in `.roamer/`; review them before running on another machine. They are not a one-command setup flow.
 
-Supabase URL and publishable-key entries in `.env.example` remain empty because no database project has been created. The Supabase CLI successfully listed the organization and returned an empty project list. Create and link a project when an application needs one. Docker's stopped engine only matters if you want to run Supabase locally.
-
-Vercel authentication was verified with `vercel whoami --non-interactive --json`. No project is linked or deployed. CLI credentials are managed by the official CLIs rather than stored in this project.
-
-The Tavily SDK was tested using Node's `--env-file=.env` option. It returned a search result and reported one credit used. The preceding browser search consumed two credits. No credential was printed in the setup notes or test output.
-
-Useful checks from this directory:
+## Start the application
 
 ```powershell
-cursor --version
-npx supabase --version
-npx supabase orgs list
-vercel --version
-vercel whoami
-npm list --depth=0
+npm run dev
 ```
 
-## Official references
+In a second terminal, with Grok signed in:
 
-- [Cursor](https://cursor.com/)
-- [Supabase dashboard](https://supabase.com/dashboard)
-- [Supabase CLI installation](https://supabase.com/docs/guides/local-development/cli/getting-started)
-- [Vercel CLI](https://vercel.com/docs/cli)
-- [v0](https://v0.app/)
-- [Tavily dashboard](https://app.tavily.com/)
-- [Tavily SDK documentation](https://docs.tavily.com/)
+```powershell
+npm run worker
+```
 
+Open `http://127.0.0.1:3000`. The worker must remain running for conversation and research. Supabase restores saved trips when the browser reconnects. See the [worker documentation](src/worker/README.md) for bot routing, queue recovery and provider limits.
+
+## Deploy the website
+
+Vercel needs the two `NEXT_PUBLIC_SUPABASE_*` values, `SUPABASE_SERVICE_ROLE_KEY`, `ROAMER_USER_ID`, `ROAMER_USER_EMAIL` and `ROAMER_ACCESS_CODE`. Keep the Tavily and Apify keys, Grok session credentials and local receipts on the laptop. The deployment contains the website and API routes; it does not host the Grok worker.
+
+The included `vercel.json` configures the Next.js deployment in London. This demo uses a cloud Supabase database; local Docker is not required.
+
+## Verify changes
+
+```powershell
+npm run typecheck
+npm test
+npm run build
+```
+
+Browser and live integration tests have separate requirements. Read the [README](README.md#checks) before running them: fixtures can enqueue real work if a worker is active. Use dedicated tester workspaces and never reuse a person's conversation bot for automated tests.
+
+Native Grok voice synchronisation remains unverified. Website text and clicked-answer tests do not establish voice support.
