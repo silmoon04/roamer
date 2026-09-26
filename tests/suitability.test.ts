@@ -19,7 +19,7 @@ describe('requirements and suitability evidence', () => {
     let state = applyEvent(pricedState(), change('user_message', { text: exact }));
     state = applyEvent(state, change('profile_patch', { notes: [exact] })); state = applyEvent(state, change('trip_patch', { stayStyle: 'step-free or lift' }));
     expect(state.requirements?.some(requirement => requirement.text === exact && requirement.source === 'message')).toBe(true);
-    expect(state.requirements?.some(requirement => requirement.text === exact && requirement.source === 'profile')).toBe(true);
+    expect(state.requirements?.some(requirement => requirement.text === exact && requirement.provenance?.some(source => source.source === 'profile'))).toBe(true);
     expect(state.candidates[0].status).not.toBe('checked');
   });
   it('requires suitability evidence even when both prices and car-free transport are checked', () => {
@@ -63,6 +63,10 @@ describe('requirements and suitability evidence', () => {
     for (const mutation of mutations) { const next = applyEvent(checked, mutation); expect(next.candidates[0].requirementChecks).toEqual([]); expect(next.phase).not.toBe('ready'); }
   });
   it('preserves older notes when a model later omits them', () => { let state = applyEvent(pricedState(), change('profile_patch', { notes: [exact] })); state = applyEvent(state, change('profile_patch', { notes: [] })); expect(state.requirements?.map(requirement => requirement.text)).toContain(exact); });
+  it('deduplicates exact whitespace-normalized requirements while preserving both source records', () => { let state = applyEvent(pricedState(), change('user_message', { text: 'Neither of us drives.' })); state = applyEvent(state, change('profile_patch', { notes: ['Neither  of us drives.'] })); expect(state.requirements).toHaveLength(1); expect(state.requirements![0].text).toBe('Neither of us drives.'); expect(state.requirements![0].provenance?.map(source => source.source)).toEqual(['message','profile']); });
+  it('does not collapse different conjunctions or exclusions into one requirement', () => { let state = applyEvent(pricedState(), change('user_message', { text: 'Step-free entrance and lift.' })); state = applyEvent(state, change('profile_patch', { notes: ['Step-free entrance or lift.'] })); expect(state.requirements).toHaveLength(2); });
+  it('preserves a current check when only duplicate provenance is added', () => { const before = applyEvent(pricedState(), change('user_message', { text: exact })); const checked = applyEvent(before, change('requirement_check', check(before))); const repeated = applyEvent(checked, change('profile_patch', { notes: [exact] })); expect(repeated.requirements).toHaveLength(1); expect(repeated.candidates[0].status).toBe('checked'); });
+  it('retires every provenance record when the user removes a deduplicated requirement', () => { let state = applyEvent(pricedState(), change('user_message', { text: 'Neither of us drives.' })); state = applyEvent(state, change('profile_patch', { notes: ['Neither of us drives.'] })); const removed = applyEvent(state, change('requirement_edit', { id: state.requirements![0].id, text: null })); expect(tripRequirements(removed)).toEqual([]); expect(removed.retiredRequirementIds).toHaveLength(2); });
   it('preserves the question and exact clicked answer as original context', () => { let state = applyEvent(pricedState(), change('question', { id: 'beds', prompt: 'Which sleeping arrangement?', options: ['One room, three beds', 'Two rooms'] })); state = applyEvent(state, change('question_answered', { id: 'beds', answer: 'One room, three beds' })); expect(state.requirements?.[0].text).toBe('Which sleeping arrangement?\nAnswer: One room, three beds'); });
   it('allows an explicit user edit without resurrecting the retired source on later updates', () => {
     const state = applyEvent(pricedState(), change('user_message', { text: exact })); const id = state.requirements![0].id;

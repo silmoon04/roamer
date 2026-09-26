@@ -80,6 +80,9 @@ for (const width of [390, 768, 1280, 1440]) test(`evidence cards and questions s
   await expect(card.locator('.candidate-price-preview')).toContainText('£620');
   await expect(page.locator('.trip-details-fold')).not.toHaveAttribute('open', '');
   expect(await page.locator('.trip-scroll').evaluate(el=>Array.from(el.children).findIndex(node=>node.classList.contains('candidate-list'))<Array.from(el.children).findIndex(node=>node.classList.contains('trip-details-fold')))).toBe(true);
+  await expect(card.locator('.candidate-requirements')).not.toHaveAttribute('open','');
+  expect(await card.evaluate(el=>Array.from(el.querySelector('.candidate-content')!.children).findIndex(node=>node.classList.contains('quote-line'))<Array.from(el.querySelector('.candidate-content')!.children).findIndex(node=>node.classList.contains('candidate-requirements')))).toBe(true);
+  await card.locator('.candidate-requirements > summary').click();
   await expect(card.getByText('Needs checking', { exact: true })).toBeVisible();
   await expect(card.getByText('Doesn’t meet', { exact: true })).toBeVisible();
   await expect(card.getByText('Verified', { exact: true })).toBeVisible();
@@ -132,6 +135,8 @@ test('fallback updates preserve card order, selection, expanded evidence and dra
   await page.locator('#trip-view-tab').click(); await expect(page.getByLabel('New trip updates')).not.toBeVisible();
   const card = page.locator('.candidate-card'); await card.scrollIntoViewIfNeeded();
   await card.locator('.source-details summary').click();
+  await card.locator('.candidate-requirements > summary').click();
+  await card.locator('.candidate-requirements li.contradicted summary').click();
   await card.locator('.candidate-summary').evaluate(el => { const range = document.createRange(); range.selectNodeContents(el); const selection = window.getSelection(); selection?.removeAllRanges(); selection?.addRange(range); });
   const selection = await page.evaluate(() => window.getSelection()?.toString());
   const scroll = await page.locator('.trip-scroll').evaluate(el => el.scrollTop);
@@ -140,6 +145,8 @@ test('fallback updates preserve card order, selection, expanded evidence and dra
   expect(await page.evaluate(() => window.getSelection()?.toString())).toBe(selection);
   expect(await page.locator('.trip-scroll').evaluate(el => el.scrollTop)).toBe(scroll);
   await expect(card.locator('.source-details')).toHaveAttribute('open', '');
+  await expect(card.locator('.candidate-requirements')).toHaveAttribute('open','');
+  await expect(card.locator('.candidate-requirements li.contradicted details')).toHaveAttribute('open','');
   await expect(card.locator('.candidate-photo img')).toHaveAttribute('src', '/images/porto.jpg');
   await page.getByRole('tab', { name: 'Chat', exact: true }).click(); await expect(page.getByLabel('Message Roamer')).toHaveValue('Keep this draft.');
   const metrics = await page.evaluate(() => (window as unknown as { __ROAMER_METRICS: { type: string; ms: number }[] }).__ROAMER_METRICS ?? []);
@@ -214,4 +221,24 @@ test('a blank criteria editor submits only entered fields and explicit GBP curre
   await page.getByRole('button',{name:'Edit trip details',exact:true}).click();await page.getByLabel('Leaving from',{exact:true}).fill('Edinburgh');await page.getByLabel('People',{exact:true}).fill('1');await page.getByLabel('Total budget (£)',{exact:true}).fill('850');
   await page.getByRole('button',{name:'Save trip details',exact:true}).click();await expect(page.getByRole('dialog')).not.toBeVisible();expect(fixture.commands).toHaveLength(1);
   expect(fixture.commands[0].patch).toEqual({origin:'Edinburgh',travellers:1,budget:850,currency:'GBP'});
+});
+
+test('release screenshots use blank fresh chats and clearly marked simulated candidates',async({page})=>{
+  mkdirSync('output/final/screenshots',{recursive:true});
+  for(const width of [1440,390]){
+    await page.setViewportSize({width,height:width===390?844:1000});await mockWorkspace(page,initialState());
+    await page.addStyleTag({content:'.debug-panel,nextjs-portal{display:none!important}'});
+    await page.evaluate(async()=>{await document.fonts.ready;await Promise.all([...document.images].map(img=>img.decode().catch(()=>{})));});
+    await page.screenshot({path:`output/final/screenshots/fresh-chat-${width}.png`,fullPage:true});
+    const state=populatedState();const candidate=state.candidates[0];candidate.name='Ljubljana';candidate.country='Slovenia';candidate.airport='LJU';candidate.flight!.label='London–Ljubljana return';candidate.stay!.label='Example apartment';candidate.stay!.image=undefined;candidate.summary='Simulated test results. Prices and property checks in this screenshot are examples.';
+    const fingerprint=suitabilityFingerprint(candidate,state.criteria,state.requirements!);candidate.requirementChecks=candidate.requirementChecks!.map(check=>({...check,fingerprint}));
+    state.actions[0].label='Checking the entrance and lift in Ljubljana';state.actions[0].destination='Ljubljana';
+    state.messages=[{id:'release-user',role:'user',text:'Two people, five nights from London. Good food, architecture and a step-free place to stay.',at:new Date().toISOString()},{id:'release-assistant',role:'assistant',text:'The flight and stay prices have arrived. The apartment does not meet your hotel-only request, and its access still needs checking.',at:new Date().toISOString()}];
+    state.questions=[{id:'release-time',prompt:'Would you prefer an early flight or a later departure?',options:['Early flight','Later departure','Either works']}];
+    await mockWorkspace(page,state);await page.addStyleTag({content:'.debug-panel,nextjs-portal{display:none!important}'});
+    if(width===390)await page.locator('#trip-view-tab').click();
+    await page.evaluate(async()=>{await document.fonts.ready;await Promise.all([...document.images].filter(img=>img.getBoundingClientRect().width).map(img=>img.decode().catch(()=>{})));});
+    await page.screenshot({path:`output/final/screenshots/shortlist-${width}.png`,fullPage:true});
+    if(width===390){await page.locator('#chat-view-tab').click();await page.screenshot({path:'output/final/screenshots/conversation-390.png',fullPage:true});}
+  }
 });

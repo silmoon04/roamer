@@ -699,6 +699,10 @@ button, a, summary { touch-action: manipulation; }
 .candidate-requirements summary::-webkit-details-marker { display: none; }
 .candidate-requirements summary > svg { flex-shrink: 0; margin-top: 3px; color: #867694; }
 .candidate-requirements summary > span { min-width: 0; flex: 1; }
+.candidate-requirements > .requirement-heading { align-items: center; min-height: 50px; padding: 12px 13px; gap: 8px; }
+.candidate-requirements > .requirement-heading > span { text-align: right; }
+.candidate-requirements > .requirement-heading > svg { margin-top: 0; }
+.candidate-requirements[open] > .requirement-heading > svg:last-child { transform: rotate(180deg); }
 .candidate-requirements summary strong { display: block; font-size: 12px; font-weight: 500; color: #6d5a81; }
 .requirement-preview { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; color: #5f5767; font-size: 14px; line-height: 1.65; margin-top: 3px; }
 .candidate-requirements details[open] summary { padding-bottom: 5px; }

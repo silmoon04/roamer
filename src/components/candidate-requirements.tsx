@@ -7,9 +7,9 @@ export default function CandidateRequirements({ candidate, criteria, requirement
   const contradicted = results.filter(result => result.status === 'contradicted').length;
   const unknown = results.filter(result => result.status === 'unknown').length;
   const overall = contradicted ? 'mismatch' : unknown ? 'unknown' : 'supported';
-  return <section className={`candidate-requirements ${overall}`} aria-label={`Requirements for ${candidate.name}`}>
-    <div className="requirement-heading"><h5>Trip requirements</h5><span>{contradicted ? `${contradicted} ${contradicted === 1 ? 'mismatch' : 'mismatches'}${unknown?` · ${unknown} to verify`:''}` : unknown ? `${unknown} to verify` : 'All verified'}</span></div>
-    <p className="requirement-explanation">{contradicted ? 'This option does not meet every requirement.' : unknown ? 'The prices below do not confirm these details.' : 'Evidence is linked for each requirement.'}</p>
+  return <details className={`candidate-requirements ${overall}`} aria-label={`Requirements for ${candidate.name}`}>
+    <summary className="requirement-heading"><h5>Trip requirements</h5><span>{contradicted ? `${contradicted} ${contradicted === 1 ? 'mismatch' : 'mismatches'}${unknown?` · ${unknown} to verify`:''}` : unknown ? `${unknown} to verify` : `${results.length} verified`}</span><ChevronDown size={15} aria-hidden="true"/></summary>
+    <p className="requirement-explanation">{contradicted ? 'This option does not meet every requirement.' : unknown ? 'Checked prices do not confirm these details.' : 'Evidence is linked for each requirement.'}</p>
     <ul>{results.map(result => {
       const Icon = result.status === 'supported' ? Check : result.status === 'contradicted' ? X : CircleHelp;
       const status = result.status === 'supported' ? 'Verified' : result.status === 'contradicted' ? 'Doesn’t meet' : 'Needs checking';
@@ -23,5 +23,5 @@ export default function CandidateRequirements({ candidate, criteria, requirement
         </details>
       </li>;
     })}</ul>
-  </section>;
+  </details>;
 }

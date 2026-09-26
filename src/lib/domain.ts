@@ -19,7 +19,8 @@ export type Profile = { interests: string[]; noCar: boolean | null; stayStyle: s
 export type Question = { id: string; prompt: string; options: string[]; answer?: string; skipped?: boolean };
 export type Message = { id: string; role: 'user' | 'assistant'; text: string; at: string; pending?: boolean };
 export type Source = { title: string; url: string; checkedAt: string; excerpt?: string };
-export type TripRequirement = { id: string; text: string; source: 'message' | 'answer' | 'stayStyle' | 'profile' | 'edit'; sourceId: string };
+export type RequirementSource = 'message' | 'answer' | 'stayStyle' | 'profile' | 'edit';
+export type TripRequirement = { id: string; text: string; source: RequirementSource; sourceId: string; provenance?: { id: string; source: RequirementSource; sourceId: string }[] };
 export type RequirementCheck = { requirementId: string; status: 'supported' | 'contradicted' | 'unknown'; summary: string; sources: Source[]; fingerprint: string; checkedAt: string };
 export type QuoteFacts = { propertyType?: string; roomName?: string; beds?: { type: string; count: number }[]; cancellation?: string; accessibility?: string };
 export type Action = { id: string; label: string; provider: string; status: 'queued' | 'running' | 'done' | 'error' | 'superseded'; startedAt: string; queuedAt?: string; finishedAt?: string; detail?: string; retryable?: boolean; kind: 'conversation' | 'discovery' | 'flights' | 'stays' | 'browser'; destination?: string };
@@ -173,11 +174,18 @@ export function tripRequirements(state: TripState): TripRequirement[] {
     ...statedRequirements(state.criteria, state.profile)
   ];
   const retired = new Set(state.retiredRequirementIds ?? []);
-  return [...new Map(records.filter(record => !retired.has(record.id)).map(record => [record.id, record])).values()];
+  const unique = new Map<string, TripRequirement>();
+  for (const record of records.filter(record => !retired.has(record.id))) {
+    const key = record.text.trim().replace(/\s+/g, ' ');
+    const existing = unique.get(key);
+    const provenance = [...(existing?.provenance ?? []), ...(record.provenance ?? []), { id: record.id, source: record.source, sourceId: record.sourceId }].filter(source => !retired.has(source.id));
+    unique.set(key, { ...(existing ?? record), provenance: [...new Map(provenance.map(source => [source.id, source])).values()] });
+  }
+  return [...unique.values()];
 }
 export function suitabilityFingerprint(candidate: Candidate, criteria: Criteria, requirements: TripRequirement[]) {
   const quote = (q?: Quote) => q ? { url: q.url, label: q.label, total: q.total, currency: q.currency, scope: q.scope, departureDate: q.departureDate, returnDate: q.returnDate, travellers: q.travellers, includes: q.includes, facts: q.facts } : null;
-  return `suit:v1:${textKey(JSON.stringify({ criteria, requirements, candidate: { id: candidate.id, name: candidate.name, country: candidate.country, airport: candidate.airport, flight: quote(candidate.flight), stay: quote(candidate.stay) } }))}`;
+  return `suit:v1:${textKey(JSON.stringify({ criteria, requirements: requirements.map(({ id, text }) => ({ id, text })), candidate: { id: candidate.id, name: candidate.name, country: candidate.country, airport: candidate.airport, flight: quote(candidate.flight), stay: quote(candidate.stay) } }))}`;
 }
 export function requirementResults(candidate: Candidate, criteria: Criteria, requirements: TripRequirement[] = []) {
   const all = requirements;
@@ -281,8 +289,8 @@ export function applyEvent(current: TripState, event: DomainEvent): TripState {
       break;
     }
     case 'requirement_edit': {
-      if (!s.requirements.some(requirement => requirement.id === p.id)) break;
-      s.retiredRequirementIds = [...new Set([...(s.retiredRequirementIds ?? []), String(p.id)])];
+      const original = s.requirements.find(requirement => requirement.id === p.id); if (!original) break;
+      s.retiredRequirementIds = [...new Set([...(s.retiredRequirementIds ?? []), original.id, ...(original.provenance ?? []).map(source => source.id)])];
       s.requirements = s.requirements.filter(requirement => requirement.id !== p.id);
       if (typeof p.text === 'string' && p.text.trim()) s.requirements.push({ id: `edit:${event.id}`, text: p.text.trim(), source: 'edit', sourceId: event.id });
       s.revision++; s.phase = 'checking'; break;
