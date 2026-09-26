@@ -8,9 +8,9 @@ The hosted demo requires a private access code. Roamer asks for missing trip det
 
 ## Product video
 
-[![Watch the Roamer demo](docs/video/roamer-demo-poster.png)](https://raw.githubusercontent.com/silmoon04/roamer/main/docs/video/roamer-demo.mp4)
+[![Watch the Roamer demo](docs/video/roamer-demo-poster.png)](https://raw.githubusercontent.com/silmoon04/roamer/a1995cd4071c28cb72128c737a8bcde6e24f20e4/docs/video/roamer-demo.mp4)
 
-[Watch or download the 61-second demo](https://raw.githubusercontent.com/silmoon04/roamer/main/docs/video/roamer-demo.mp4) · [Recording notes](docs/demo-video.md) · [Measured live run](docs/LIVE-RUN.md)
+[Watch or download the 61-second demo](https://raw.githubusercontent.com/silmoon04/roamer/a1995cd4071c28cb72128c737a8bcde6e24f20e4/docs/video/roamer-demo.mp4) · [Recording notes](docs/demo-video.md) · [Measured live run](docs/LIVE-RUN.md)
 
 Actual service footage with waiting shortened and labelled. Later preference changes appear in the saved conversation and results, rather than every click being captured. Prices arrived while conversation continued; transport and suitability checks remained partial. Native voice is not shown or verified.
 

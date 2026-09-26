@@ -1,8 +1,8 @@
 # Roamer demo video
 
-[Watch or download the 61-second demo](https://raw.githubusercontent.com/silmoon04/roamer/main/docs/video/roamer-demo.mp4).
+[Watch or download the 61-second demo](https://raw.githubusercontent.com/silmoon04/roamer/a1995cd4071c28cb72128c737a8bcde6e24f20e4/docs/video/roamer-demo.mp4).
 
-[![Roamer live scenario video](video/roamer-demo-poster.png)](https://raw.githubusercontent.com/silmoon04/roamer/main/docs/video/roamer-demo.mp4)
+[![Roamer live scenario video](video/roamer-demo-poster.png)](https://raw.githubusercontent.com/silmoon04/roamer/a1995cd4071c28cb72128c737a8bcde6e24f20e4/docs/video/roamer-demo.mp4)
 
 The video uses actual footage from a dedicated tester's live service run. Waiting is shortened and explicitly labelled. The final desktop and mobile views show the saved results from that same run. The footage does not use the synthetic fixtures shown separately in the README screenshots.
 
